@@ -52,6 +52,15 @@ test('the page renders the same hook count while loading and once loaded', () =>
   assert.ok(ready.text.includes('[ud_chart]'))
 })
 
+test('the cost and balance cards share one shape: symbol on the amount, code as the unit', () => {
+  const { nodes } = mountClient({ data: summary() }).render('main')
+  const values = nodes.filter((node) => node.props.className === 'ud_value').map((node) => node.children.join(''))
+  const units = nodes.filter((node) => node.props.className === 'ud_unit').map((node) => node.children.join(''))
+  assert.ok(values.some((value) => value.startsWith('$')), 'amounts carry their symbol')
+  assert.ok(units.includes('USD'), 'the currency code sits in the small unit slot')
+  for (const value of values) assert.ok(!value.includes('USD'), 'no code inside the big amount')
+})
+
 test('the chart stacks one segment per model, clipped to the bar outline', () => {
   const { nodes } = mountClient({ data: summary() }).render('main')
   const clipped = nodes.filter((node) => node.type === 'rect' && node.props.clipPath !== undefined)

@@ -302,6 +302,33 @@ window.__ModuleLoader__.load({
 
     const formatterCache = new Map()
 
+    /**
+     * Split a currency amount into its symbol and its formatted number.
+     * @param locale - formatting locale.
+     * @param value - amount to render.
+     * @param currency - ISO code; defaults to USD.
+     * @returns `{ symbol, number }`, with enough decimals for a tiny amount.
+     */
+    function currencyParts(locale, value, currency) {
+      // Zero reads as a plain `$0.00`; only real fractions need more decimals.
+      const digits = value === 0 ? 2 : value < 0.01 ? 6 : value < 1 ? 4 : 2
+      const code = currency ?? 'USD'
+      let symbol = code
+      try {
+        const part = new Intl.NumberFormat(locale, { style: 'currency', currency: code, currencyDisplay: 'narrowSymbol' })
+          .formatToParts(0)
+          .find((entry) => entry.type === 'currency')
+        if (part !== undefined && part.value.length > 0) symbol = part.value
+      } catch {}
+      let number
+      try {
+        number = new Intl.NumberFormat(locale, { minimumFractionDigits: digits, maximumFractionDigits: digits }).format(value)
+      } catch {
+        number = Number(value).toFixed(digits)
+      }
+      return { symbol, number }
+    }
+
     /** Number and currency formatters bound to one locale (`undefined` = browser). */
     function formatters(locale) {
       const cacheKey = locale ?? '\u0000default'
@@ -314,22 +341,13 @@ window.__ModuleLoader__.load({
         compact: (value) => compactFormat.format(value),
         plain: (value) => plainFormat.format(value),
         money: (value, currency) => {
-          const digits = value > 0 && value < 0.01 ? 6 : value < 1 ? 4 : 2
-          const code = currency ?? 'USD'
-          let symbol = code
-          try {
-            const part = new Intl.NumberFormat(locale, { style: 'currency', currency: code, currencyDisplay: 'narrowSymbol' })
-              .formatToParts(0)
-              .find((entry) => entry.type === 'currency')
-            if (part !== undefined && part.value.length > 0) symbol = part.value
-          } catch {}
-          let number
-          try {
-            number = new Intl.NumberFormat(locale, { minimumFractionDigits: digits, maximumFractionDigits: digits }).format(value)
-          } catch {
-            number = value.toFixed(digits)
-          }
-          return `${symbol}${number} ${code}`
+          const { symbol, number } = currencyParts(locale, value, currency)
+          return `${symbol}${number} ${currency ?? 'USD'}`
+        },
+        /** The amount alone, symbol included: the card shows the code as a small unit. */
+        amount: (value, currency) => {
+          const { symbol, number } = currencyParts(locale, value, currency)
+          return `${symbol}${number}`
         },
         /** Axis ticks: the amount alone, no currency code, so labels stay short. */
         axis: (value, currency) => {
@@ -1307,7 +1325,8 @@ window.__ModuleLoader__.load({
         { className: 'ud_cards' },
         h(StatCard, {
           label: t('cost'),
-          value: f.money(totals.cost, currency),
+          value: f.amount(totals.cost, currency),
+          unit: currency,
           children: [
             data.spend !== null && data.spend !== undefined
               ? h('div', { className: 'ud_note' }, `${t('spendNote')} ${f.money(data.spend.amount, currency)}`)
@@ -1330,7 +1349,8 @@ window.__ModuleLoader__.load({
         balanceWallet !== null
           ? h(StatCard, {
               label: t('balance'),
-              value: String(balanceWallet.balance),
+              // Same shape as the cost card: symbol on the amount, code as the unit.
+              value: Number.isFinite(Number(balanceWallet.balance)) ? f.amount(Number(balanceWallet.balance), balanceWallet.currency) : String(balanceWallet.balance),
               unit: balanceWallet.currency,
               note: null,
               children: h(
