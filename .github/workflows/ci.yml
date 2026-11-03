@@ -1,0 +1,38 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Node ${{ matrix.node }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        node: [20, 22, 24]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+      - name: Run the suite
+        run: node --test
+      - name: Check the published package is self-contained
+        run: |
+          node -e "
+          const { readFileSync, existsSync } = require('node:fs');
+          const manifest = JSON.parse(readFileSync('package.json', 'utf8'));
+          const missing = Object.values(manifest.exports)
+            .map((target) => target.replace('./', ''))
+            .filter((file) => !file.includes('*') && !existsSync(file));
+          if (missing.length > 0) { console.error('missing exports:', missing); process.exit(1); }
+          if (!existsSync(manifest.dsh.bundle.patch)) { console.error('missing bundle patch'); process.exit(1); }
+          console.log('package ok', manifest.version);
+          "

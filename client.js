@@ -64,6 +64,8 @@ window.__ModuleLoader__.load({
       rowCacheWrite: 'Cache write',
       rowOutput: 'Output',
       defaultPrice: 'default price',
+      estimatedShort: 'est.',
+      estimatedPrice: 'Priced from the model family: no published row for this model yet, so the figure is an estimate.',
     }
 
     const fr = {
@@ -121,6 +123,8 @@ window.__ModuleLoader__.load({
       rowCacheWrite: 'Écriture en cache',
       rowOutput: 'Sortie',
       defaultPrice: 'prix par défaut',
+      estimatedShort: 'est.',
+      estimatedPrice: 'Prix déduit de la famille du modèle : aucune grille publiée pour ce modèle, le chiffre est une estimation.',
     }
 
     const zh = {
@@ -178,6 +182,8 @@ window.__ModuleLoader__.load({
       rowCacheWrite: '缓存写入',
       rowOutput: '输出',
       defaultPrice: '默认价格',
+      estimatedShort: '估',
+      estimatedPrice: '按模型系列推算的价格：该模型尚无公开价目表，金额为估算值。',
     }
 
     const DICTS = { en, fr, zh }
@@ -948,7 +954,13 @@ window.__ModuleLoader__.load({
             h(
               'div',
               { style: { minWidth: 0 } },
-              h('div', { className: 'ud_rowName' }, model.model, model.priced === false ? h('span', { className: 'ud_rowTag', title: t('defaultPrice') }, t('defaultPrice')) : null),
+              h(
+                'div',
+                { className: 'ud_rowName' },
+                model.model,
+                model.priced === false ? h('span', { className: 'ud_rowTag', title: t('defaultPrice') }, t('defaultPrice')) : null,
+                model.estimated === true && model.priced !== false ? h('span', { className: 'ud_rowTag', title: t('estimatedPrice') }, t('estimatedShort')) : null,
+              ),
               h('div', { className: 'ud_rowMeta' }, `${f.plain(model.requests)} req. · ${f.compact(model.inputTokens + model.cacheReadTokens)} in · ${f.compact(model.outputTokens)} out`),
             ),
             h('div', { className: 'ud_rowValue', style: { color: 'var(--dsw-alias-label-secondary)' } }, f.compact(model.inputTokens + model.cacheReadTokens + model.outputTokens)),

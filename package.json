@@ -1,6 +1,6 @@
 {
   "name": "dsh-usage",
-  "version": "1.4.0",
+  "version": "1.5.0",
   "type": "module",
   "description": "Token usage, request counts and estimated cost for every DeepSeek Harness Session, with a sidebar page, a per-message cost chip and the account balance.",
   "license": "MIT",
@@ -27,7 +27,7 @@
     "./locale/*.json": "./locale/*.json",
     "./icon": "./icon.svg"
   },
-  "files": [
+  "scripts": {"test": "node --test" },"files": [
     "index.js",
     "client.js",
     "cordis.patch.yml",

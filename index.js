@@ -43,6 +43,13 @@ const DEFAULT_PRICES = {
 /** Applied when a model name matches no entry: the cheap, current default. */
 const FALLBACK_MODEL = 'deepseek-flash'
 
+/**
+ * Learned price rows: a model first seen in a Session log gets a row derived
+ * from its family name, so a newly released model is priced without anyone
+ * editing the profile. Persisted so the numbers stay stable across restarts.
+ */
+const LEARNED_VERSION = 1
+
 /** Route the page reads its window aggregate from. */
 const SUMMARY_PATH = '/api/usage.summary'
 
@@ -66,8 +73,12 @@ function num(value) {
   return typeof value === 'number' && Number.isFinite(value) && value > 0 ? value : 0
 }
 
-/** Merge the row configuration over the defaults without deep-cloning prices per call. */
-function resolveConfig(config) {
+/**
+ * Merge the row configuration over the defaults without deep-cloning prices per call.
+ * @param config - raw bundle configuration.
+ * @param learned - rows derived for models nobody configured.
+ */
+function resolveConfig(config, learned = {}) {
   const raw = config !== null && typeof config === 'object' ? config : {}
   const prices = { ...DEFAULT_PRICES }
   if (raw.prices !== null && typeof raw.prices === 'object') {
@@ -82,10 +93,25 @@ function resolveConfig(config) {
       }
     }
   }
+  // Every model whose row is not one of ours is an estimate, even when the row
+  // came from a family match: the UI says so instead of pretending otherwise.
+  const explicit = new Set(Object.keys(prices))
+  const base = DEFAULT_PRICES[FALLBACK_MODEL]
+  for (const [model, entry] of Object.entries(learned)) {
+    if (Object.hasOwn(prices, model) || entry === null || typeof entry !== 'object') continue
+    prices[model] = {
+      cacheHit: pair(entry.cacheHit, base.cacheHit),
+      cacheMiss: pair(entry.cacheMiss, base.cacheMiss),
+      output: pair(entry.output, base.output),
+      cacheWrite: pair(entry.cacheWrite, base.cacheWrite),
+    }
+  }
   return {
     currency: typeof raw.currency === 'string' ? raw.currency : 'USD',
     windowDays: Number.isSafeInteger(raw.windowDays) && raw.windowDays > 0 && raw.windowDays <= 365 ? raw.windowDays : 30,
     prices,
+    /** Models with a row this build ships or the user wrote: everything else is an estimate. */
+    explicit,
     fallbackModel: typeof raw.fallbackModel === 'string' ? raw.fallbackModel : FALLBACK_MODEL,
   }
 }
@@ -113,18 +139,43 @@ function isPeak(time) {
 function priceRow(prices, fallbackModel, model) {
   if (Object.hasOwn(prices, model)) return prices[model]
   const lower = model.toLowerCase()
-  if (lower.includes('pro')) return prices['deepseek-v4-pro'] ?? prices[fallbackModel]
-  if (lower.includes('flash')) return prices['deepseek-flash'] ?? prices[fallbackModel]
+  if (lower.includes('pro') || lower.includes('reasoner')) return prices['deepseek-v4-pro'] ?? prices[fallbackModel]
+  if (lower.includes('flash') || lower.includes('chat') || lower.includes('lite')) return prices['deepseek-flash'] ?? prices[fallbackModel]
   return prices[fallbackModel] ?? DEFAULT_PRICES[FALLBACK_MODEL]
+}
+
+/** The event list a live Session exposes, whichever field its class uses. */
+function liveEvents(session) {
+  if (session === undefined || session === null) return undefined
+  if (Array.isArray(session.events)) return session.events
+  if (Array.isArray(session.log)) return session.log
+  return undefined
 }
 
 /** Whether a model has its own price row rather than the fallback grid. */
 function priceKnown(prices, model) {
   if (Object.hasOwn(prices, model)) return true
   const lower = model.toLowerCase()
-  if (lower.includes('pro')) return prices['deepseek-v4-pro'] !== undefined
-  if (lower.includes('flash')) return prices['deepseek-flash'] !== undefined
+  if (lower.includes('pro') || lower.includes('reasoner')) return prices['deepseek-v4-pro'] !== undefined
+  if (lower.includes('flash') || lower.includes('chat') || lower.includes('lite')) return prices['deepseek-flash'] !== undefined
   return false
+}
+
+/**
+ * Give a never-seen model a price row derived from its family name, so a model
+ * released after this build still gets a plausible cost instead of silently
+ * borrowing the cheapest grid.
+ * @param config - resolved configuration whose price table is extended in place.
+ * @param model - the model name read from a usage record.
+ * @returns the derived row, or undefined when the model already had one.
+ */
+function learnModel(config, model) {
+  if (typeof model !== 'string' || model.length === 0) return undefined
+  if (Object.hasOwn(config.prices, model)) return undefined
+  const row = priceRow(config.prices, config.fallbackModel, model)
+  const derived = { cacheHit: [...row.cacheHit], cacheMiss: [...row.cacheMiss], output: [...row.output], cacheWrite: [...row.cacheWrite] }
+  config.prices[model] = derived
+  return derived
 }
 
 /**
@@ -315,6 +366,9 @@ function foldSession(header, events, config) {
       cacheWriteTokens: num(usage.cacheWriteTokens),
       outputTokens: num(usage.outputTokens),
     }
+    // A model nobody configured still gets a plausible row, derived once from
+    // its family name and remembered, so a new release needs no profile edit.
+    if (!Object.hasOwn(config.prices, model) && typeof config.learn === 'function') config.learn(model)
     const parts = costParts(config.prices, config.fallbackModel, { ...tokens, model }, event.time)
     const cost = parts.total
     costByKind.input += parts.input
@@ -341,7 +395,20 @@ function foldSession(header, events, config) {
 
     addInto(totals, tokens, cost)
 
-    const modelBucket = byModel.get(model) ?? { requests: 0, inputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, outputTokens: 0, cost: 0, model, provider, priced: priceKnown(config.prices, model) }
+    const modelBucket = byModel.get(model) ?? {
+      requests: 0,
+      inputTokens: 0,
+      cacheReadTokens: 0,
+      cacheWriteTokens: 0,
+      outputTokens: 0,
+      cost: 0,
+      model,
+      provider,
+      priced: priceKnown(config.prices, model),
+      // No row of its own: the figure comes from a family match or a learned
+      // row, and the page says so rather than passing it off as published.
+      estimated: config.explicit === undefined || !config.explicit.has(model),
+    }
     if (!priceKnown(config.prices, model)) modelBucket.priced = false
     addInto(modelBucket, tokens, cost)
     byModel.set(model, modelBucket)
@@ -449,6 +516,43 @@ function writeBalanceSamples(samples) {
   } catch {}
 }
 
+/** Where derived price rows live: `<DSH_HOME>/storages/usage-dashboard/models.json`. */
+function modelsFilePath() {
+  const home = process.env.DSH_HOME
+  if (typeof home !== 'string' || home.length === 0) return null
+  return join(home, 'storages', 'usage-dashboard', 'models.json')
+}
+
+/** Read the derived rows; a missing or damaged file reads as none. */
+function readLearnedModels() {
+  const file = modelsFilePath()
+  if (file === null) return {}
+  try {
+    const parsed = JSON.parse(readFileSync(file, 'utf8'))
+    const models = parsed !== null && typeof parsed === 'object' && parsed.models !== null && typeof parsed.models === 'object' ? parsed.models : {}
+    const clean = {}
+    for (const [model, row] of Object.entries(models)) {
+      if (row === null || typeof row !== 'object') continue
+      if (!Array.isArray(row.cacheHit) || !Array.isArray(row.cacheMiss) || !Array.isArray(row.output)) continue
+      clean[model] = { cacheHit: row.cacheHit, cacheMiss: row.cacheMiss, output: row.output, cacheWrite: Array.isArray(row.cacheWrite) ? row.cacheWrite : [0, 0] }
+    }
+    return clean
+  } catch {
+    return {}
+  }
+}
+
+/** Persist the derived rows; failure only costs the learning, never the dashboard. */
+function writeLearnedModels(models) {
+  const file = modelsFilePath()
+  if (file === null) return
+  try {
+    mkdirSync(dirname(file), { recursive: true })
+    writeFileSync(file, JSON.stringify({ version: LEARNED_VERSION, models }))
+    return
+  } catch {}
+}
+
 /**
  * Record the current wallet total at most every few hours, so a balance delta
  * becomes a measured spend figure instead of an estimate.
@@ -488,7 +592,29 @@ function measuredSpend(since, currency) {
  * @param config - raw row configuration from the bundle patch.
  */
 export function apply(ctx, config = {}) {
-  const resolved = resolveConfig(config)
+  // Rows derived in an earlier run come back first, so a model learnt once is
+  // priced the same way on every start.
+  const learned = readLearnedModels()
+  const resolved = resolveConfig(config, learned)
+
+  /** Models derived in this run, persisted once so the table stays stable. */
+  const learnedNow = new Set()
+  let learnTimer = null
+
+  /** Derive and remember a row for a model the price table does not know. */
+  resolved.learn = (model) => {
+    const row = learnModel(resolved, model)
+    if (row === undefined) return
+    learned[model] = row
+    learnedNow.add(model)
+    // One write per burst: a scan can meet several new models at once.
+    if (learnTimer !== null) return
+    learnTimer = setTimeout(() => {
+      learnTimer = null
+      writeLearnedModels(learned)
+    }, 500)
+    if (typeof learnTimer.unref === 'function') learnTimer.unref()
+  }
 
   /** `sessionId -> { revision, value }`: a fold survives until its log revision changes. */
   const folds = new Map()
@@ -519,8 +645,9 @@ export function apply(ctx, config = {}) {
     for (const snapshot of snapshots) {
       const id = String(snapshot.header.id)
       const live = liveSessions.get(id)
-      if (live !== undefined && Array.isArray(live.events)) {
-        const events = live.events
+      const liveList = liveEvents(live)
+      if (liveList !== undefined) {
+        const events = liveList
         const signature = `live:${events.length}:${events.length > 0 ? events[events.length - 1].time : 0}`
         const cachedLive = folds.get(id)
         if (cachedLive !== undefined && cachedLive.revision === signature) {
@@ -630,8 +757,20 @@ export function apply(ctx, config = {}) {
       const sessionTokens = session.totalTokens
       const share = sessionTokens > 0 ? Math.min(1, totalTokens / sessionTokens) : 0
       for (const model of session.byModel) {
-        const target = byModel.get(model.model) ?? { model: model.model, provider: model.provider, requests: 0, inputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, outputTokens: 0, cost: 0, priced: model.priced !== false }
+        const target = byModel.get(model.model) ?? {
+          model: model.model,
+          provider: model.provider,
+          requests: 0,
+          inputTokens: 0,
+          cacheReadTokens: 0,
+          cacheWriteTokens: 0,
+          outputTokens: 0,
+          cost: 0,
+          priced: model.priced !== false,
+          estimated: model.estimated === true,
+        }
         if (model.priced === false) target.priced = false
+        if (model.estimated === true) target.estimated = true
         target.requests += model.requests * share
         target.inputTokens += model.inputTokens * share
         target.cacheReadTokens += model.cacheReadTokens * share
@@ -816,8 +955,9 @@ export function apply(ctx, config = {}) {
     const store = ctx.get('sessions')
     const live = store !== undefined && store !== null && typeof store.get === 'function' ? store.get(id) : undefined
     let value
-    if (live !== undefined && Array.isArray(live.events)) {
-      const events = live.events
+    const liveList = liveEvents(live)
+    if (liveList !== undefined) {
+      const events = liveList
       const signature = `live:${events.length}:${events.length > 0 ? events[events.length - 1].time : 0}`
       const cachedLive = folds.get(id)
       value = cachedLive !== undefined && cachedLive.revision === signature ? cachedLive.value : foldSession(live.header ?? { id, createdAt: 0 }, events, resolved)

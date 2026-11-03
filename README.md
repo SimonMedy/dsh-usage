@@ -1,5 +1,7 @@
 # dsh-usage
 
+[![CI](https://github.com/SimonMedy/dsh-usage/actions/workflows/ci.yml/badge.svg)](https://github.com/SimonMedy/dsh-usage/actions/workflows/ci.yml)
+
 Usage and cost dashboard for the [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness).
 
 It reads the Session logs already on your machine, prices every model call with the published
@@ -85,17 +87,38 @@ per 1M tokens, written as `[off-peak, peak]`. Override them in the profile patch
         output: [1.98, 3.96]
 ```
 
-A single number applies to both tariffs (`cacheMiss: 0.15`). A model that matches no row is priced
-with the fallback grid and marked `default price` in the per-model table, so an extrapolated figure
-is never silently presented as a real one.
+A single number applies to both tariffs (`cacheMiss: 0.15`).
 
-### Future models
+### Future models — automatic
 
-Pricing is resolved per request, from the model recorded in the event, so a model that did not exist
-when this plugin shipped never breaks the page: names containing `pro` use the v4-pro row, names
-containing `flash` the flash row, anything else falls back to the flash grid and is tagged
-**default price** until you add its row to `prices`. The tag disappears as soon as a request matches
-an entry.
+A model released after this build is priced **without editing anything**. The first request it makes
+gives it a row derived from its family name:
+
+| Model name contains | Row used |
+|---|---|
+| `pro`, `reasoner` | the pro grid |
+| `flash`, `chat`, `lite` | the flash grid |
+| anything else | the fallback grid |
+
+That derived row is written to `<DSH_HOME>/storages/usage-dashboard/models.json`, so every later run
+prices the model the same way instead of re-deriving it. The per-model table tags such a model
+**est.** and its tooltip says the figure comes from the family, not a published rate — the number is
+never silently presented as official.
+
+Override any of it in `prices`: an explicit row always wins and drops the tag. The DeepSeek API
+lists model names (`/models`) but publishes no prices programmatically, so no key can fetch the grid;
+what is automatic is the *name*, and the closest published tier by family.
+
+## Tests
+
+```bash
+node --test
+```
+
+Coverage: cost maths (tariffs, cache rates, derived rows, persistence), aggregation (day buckets,
+per-day model split, window filtering, live logs), the Host contract (exports, `engines.dsh`, module
+id) and the browser half (render in both states, chart geometry, legend, breakdown panel). No
+dependencies beyond Node itself.
 
 ## How the cost is computed
 
