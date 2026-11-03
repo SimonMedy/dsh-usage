@@ -127,17 +127,27 @@ function priceKnown(prices, model) {
   return false
 }
 
-/** The billed cost of one usage record in USD. */
-function costOf(prices, fallbackModel, usage, time) {
+/**
+ * The billed cost of one usage record in USD, split by token kind.
+ * @param prices - resolved price table.
+ * @param fallbackModel - model used when no row matches.
+ * @param usage - token counts plus the model that produced them.
+ * @param time - event time, for the peak/off-peak tariff.
+ * @returns the four components and their sum.
+ */
+function costParts(prices, fallbackModel, usage, time) {
   const row = priceRow(prices, fallbackModel, usage.model)
   const tariff = isPeak(time) ? 1 : 0
-  return (
-    (num(usage.inputTokens) * row.cacheMiss[tariff] +
-      num(usage.cacheReadTokens) * row.cacheHit[tariff] +
-      num(usage.cacheWriteTokens) * row.cacheWrite[tariff] +
-      num(usage.outputTokens) * row.output[tariff]) /
-    1e6
-  )
+  const input = (num(usage.inputTokens) * row.cacheMiss[tariff]) / 1e6
+  const cacheRead = (num(usage.cacheReadTokens) * row.cacheHit[tariff]) / 1e6
+  const cacheWrite = (num(usage.cacheWriteTokens) * row.cacheWrite[tariff]) / 1e6
+  const output = (num(usage.outputTokens) * row.output[tariff]) / 1e6
+  return { input, cacheRead, cacheWrite, output, total: input + cacheRead + cacheWrite + output }
+}
+
+/** The billed cost of one usage record in USD. */
+function costOf(prices, fallbackModel, usage, time) {
+  return costParts(prices, fallbackModel, usage, time).total
 }
 
 /** Local calendar day key (`YYYY-MM-DD`) for one timestamp. */
@@ -276,6 +286,7 @@ function foldSession(header, events, config) {
   const byDay = new Map()
   const byTurn = new Map()
   const byMessage = {}
+  const costByKind = { input: 0, cacheRead: 0, cacheWrite: 0, output: 0 }
   let lastTime = header.createdAt ?? 0
   let turns = 0
   let steps = 0
@@ -303,7 +314,12 @@ function foldSession(header, events, config) {
       cacheWriteTokens: num(usage.cacheWriteTokens),
       outputTokens: num(usage.outputTokens),
     }
-    const cost = costOf(config.prices, config.fallbackModel, { ...tokens, model }, event.time)
+    const parts = costParts(config.prices, config.fallbackModel, { ...tokens, model }, event.time)
+    const cost = parts.total
+    costByKind.input += parts.input
+    costByKind.cacheRead += parts.cacheRead
+    costByKind.cacheWrite += parts.cacheWrite
+    costByKind.output += parts.output
 
     if (typeof message === 'object' && message !== null && typeof message.id === 'string' && message.id.length > 0) {
       const turn = Number(event.data.turn)
@@ -357,6 +373,7 @@ function foldSession(header, events, config) {
     byDay: Object.fromEntries(byDay),
     byTurn: Object.fromEntries(byTurn),
     byMessage,
+    costByKind,
   }
 }
 
@@ -788,6 +805,12 @@ export function apply(ctx, config = {}) {
       cost: value.cost,
       byTurn: value.byTurn,
       byMessage: value.byMessage,
+      costByKind: value.costByKind,
+      inputTokens: value.inputTokens,
+      cacheReadTokens: value.cacheReadTokens,
+      cacheWriteTokens: value.cacheWriteTokens,
+      outputTokens: value.outputTokens,
+      byModel: value.byModel.map((entry) => ({ model: entry.model, requests: entry.requests, cost: entry.cost, priced: entry.priced })),
     })
   }
 

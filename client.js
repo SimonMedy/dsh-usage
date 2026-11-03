@@ -56,6 +56,11 @@ window.__ModuleLoader__.load({
       turnCost: 'Estimated cost of this turn',
       costChipTitle: 'Estimated cost of this Session',
       messageCost: 'Estimated cost of this message',
+      costDetails: 'Cost breakdown',
+      rowInput: 'Uncached input',
+      rowCacheRead: 'Cached input',
+      rowCacheWrite: 'Cache write',
+      rowOutput: 'Output',
       defaultPrice: 'default price',
     }
 
@@ -106,6 +111,11 @@ window.__ModuleLoader__.load({
       turnCost: 'Coût estimé de ce tour',
       costChipTitle: 'Coût estimé de cette conversation',
       messageCost: 'Coût estimé de ce message',
+      costDetails: 'Détail du coût',
+      rowInput: 'Entrée non cachée',
+      rowCacheRead: 'Entrée en cache',
+      rowCacheWrite: 'Écriture en cache',
+      rowOutput: 'Sortie',
       defaultPrice: 'prix par défaut',
     }
 
@@ -156,6 +166,11 @@ window.__ModuleLoader__.load({
       turnCost: '本轮预估费用',
       costChipTitle: '本会话预估费用',
       messageCost: '本条消息预估费用',
+      costDetails: '费用明细',
+      rowInput: '未缓存输入',
+      rowCacheRead: '缓存输入',
+      rowCacheWrite: '缓存写入',
+      rowOutput: '输出',
       defaultPrice: '默认价格',
     }
 
@@ -485,14 +500,26 @@ window.__ModuleLoader__.load({
    stays after the group. */
 [data-clock="end"] > span:last-child{display:contents}
 [data-clock="end"] > span:last-child > *:last-child{order:3}
-.ud_footCost{display:inline-flex;align-items:center;gap:5px;font-size:12px;line-height:18px;color:var(--dsw-alias-label-secondary);font-variant-numeric:tabular-nums;white-space:nowrap}
-.ud_footCost svg{flex:none;opacity:.85}
+.ud_footCost{box-sizing:border-box;max-width:100%;border-radius:var(--dsw-radius-sm);color:var(--dsw-alias-label-tertiary);font-family:inherit;font-size:12px;line-height:18px;font-variant-numeric:tabular-nums;white-space:nowrap;border:none;background:0 0;align-items:center;gap:6px;padding:1px 8px;display:inline-flex;cursor:pointer}
+.ud_footCost:hover{background:var(--dsw-alias-interactive-bg-hover)}
+.ud_footCost[aria-expanded="true"]{background:var(--dsw-alias-interactive-bg-hover)}
+.ud_footCost svg{width:14px;height:14px;flex:none}
 .ud_sideRow{box-sizing:border-box;user-select:none;border-radius:var(--dsw-radius-md);width:100%;flex:none;height:32px;color:var(--dsw-alias-label-primary);font:inherit;font-size:14px;cursor:pointer;background:0 0;border:0;align-items:center;gap:8px;padding:6px 2px 6px 3px;line-height:20px;display:flex;text-align:left;overflow:hidden;margin:0}
 .ud_sideRow:hover{background:var(--dsw-alias-interactive-bg-hover)}
 .ud_sideRow[aria-current="page"]{background:var(--dsw-alias-bg-layer-2)}
 .ud_sideLabel{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
 .ud_sideIcon{box-sizing:border-box;border-radius:var(--dsw-radius-md);border:0;background:0 0;color:var(--dsw-alias-label-primary);cursor:pointer;justify-content:center;align-items:center;gap:0;width:36px;height:36px;flex:none;margin:0;padding:0;display:inline-flex}
 .ud_sideIcon:hover{background:var(--dsw-alias-interactive-bg-hover)}
+/* Same surface, stroke and elevation as the shipped stat dialog: the panel
+   tokens are the ones the Harness uses for its own usage popovers. */
+.ud_pop{position:fixed;z-index:1100;box-sizing:border-box;width:max-content;min-width:min(300px,calc(100vw - 24px));max-width:min(440px,calc(100vw - 24px));border-radius:var(--dsw-radius-lg);background:var(--dsw-specific-menu);backdrop-filter:var(--dsw-menu-backdrop-filter);--dsw-elevation-stroke-color:var(--dsw-alias-border-l1);box-shadow:var(--dsw-elevation-prominent);color:var(--dsw-alias-label-secondary);cursor:default;border:0;padding:16px;font-size:12px;line-height:18px}
+.ud_popHead{display:flex;justify-content:space-between;gap:16px;margin-bottom:8px;color:var(--dsw-alias-label-primary);font-weight:500;font-variant-numeric:tabular-nums}
+.ud_popRule{border-top:.5px solid var(--dsw-alias-border-l2);margin-bottom:10px}
+.ud_popRow{display:grid;grid-template-columns:minmax(76px,auto) minmax(0,1fr) auto;gap:6px 16px;align-items:baseline;padding:1px 0;color:var(--dsw-alias-label-tertiary)}
+.ud_popRow b{color:var(--dsw-alias-label-secondary);font-weight:400;font-variant-numeric:tabular-nums;text-align:right}
+.ud_popMeta{color:var(--dsw-alias-label-tertiary);font-variant-numeric:tabular-nums;text-align:right}
+.ud_popSection{margin:12px 0 4px;color:var(--dsw-alias-label-tertiary);font-size:11px;line-height:16px;text-transform:uppercase;letter-spacing:.04em}
+.ud_popNote{margin-top:12px;color:var(--dsw-alias-label-tertiary);font-size:11px;line-height:16px}
 `
 
     const tagId = 'dsh-usage/page.css'
@@ -575,7 +602,20 @@ window.__ModuleLoader__.load({
         .then((response) => (response.ok ? response.json() : undefined))
         .then((data) => {
           if (data === undefined) return undefined
-          const next = { at: Date.now(), currency: data.currency, byTurn: data.byTurn ?? {}, byMessage: data.byMessage ?? {}, requests: data.requests, cost: data.cost }
+          const next = {
+            at: Date.now(),
+            currency: data.currency,
+            byTurn: data.byTurn ?? {},
+            byMessage: data.byMessage ?? {},
+            requests: data.requests,
+            cost: data.cost,
+            costByKind: data.costByKind ?? null,
+            byModel: data.byModel ?? [],
+            inputTokens: data.inputTokens ?? 0,
+            cacheReadTokens: data.cacheReadTokens ?? 0,
+            cacheWriteTokens: data.cacheWriteTokens ?? 0,
+            outputTokens: data.outputTokens ?? 0,
+          }
           turnCache.set(id, next)
           publishTurnCosts(id, next)
           return next
@@ -1191,16 +1231,116 @@ window.__ModuleLoader__.load({
 
     /**
      * The Session's estimated cost in the composer footer, beside the shipped
-     * turn/step, token, and cache chips. It reads the same usage records those
-     * chips summarise, so only the price table makes it an estimate.
+     * turn/step, token, and cache chips. Clicking it opens the breakdown: cost
+     * per token kind and per model, over the same usage records the neighbours
+     * summarise, so only the price table makes it an estimate.
      */
     function SessionCostChip(props) {
       const lang = useLang()
       const f = useMemo(() => formatters(lang), [lang])
       const usage = useTurnCosts(props.sessionId, 20000)
+      const [anchor, setAnchor] = useState(null)
+      const buttonRef = useRef(null)
+      const panelRef = useRef(null)
+
+      useEffect(() => {
+        if (anchor === null) return undefined
+        const onDown = (event) => {
+          if (buttonRef.current !== null && buttonRef.current.contains(event.target)) return
+          if (panelRef.current !== null && panelRef.current.contains(event.target)) return
+          setAnchor(null)
+        }
+        const onKey = (event) => {
+          if (event.key === 'Escape') setAnchor(null)
+        }
+        const onViewport = () => setAnchor(null)
+        document.addEventListener('mousedown', onDown)
+        document.addEventListener('keydown', onKey)
+        window.addEventListener('resize', onViewport)
+        return () => {
+          document.removeEventListener('mousedown', onDown)
+          document.removeEventListener('keydown', onKey)
+          window.removeEventListener('resize', onViewport)
+        }
+      }, [anchor])
+
       if (usage === null || typeof usage.cost !== 'number' || usage.requests === 0) return null
+
+      const toggle = () => {
+        if (anchor !== null) {
+          setAnchor(null)
+          return
+        }
+        const rect = buttonRef.current === null ? undefined : buttonRef.current.getBoundingClientRect()
+        if (rect === undefined) return
+        setAnchor({ left: rect.left, top: rect.top })
+      }
+
       const title = `${translate(lang, 'costChipTitle')} · ${f.plain(usage.requests)} req.`
-      return h('span', { className: 'ud_footCost', title }, h(TagIcon, {}), h('span', {}, `≈ ${f.money(usage.cost, usage.currency)}`))
+      const button = h(
+        'button',
+        {
+          ref: buttonRef,
+          type: 'button',
+          className: 'ud_footCost',
+          title,
+          'aria-haspopup': 'dialog',
+          'aria-expanded': anchor !== null,
+          onClick: toggle,
+        },
+        h(TagIcon, {}),
+        h('span', {}, `≈ ${f.money(usage.cost, usage.currency)}`),
+      )
+      if (anchor === null) return button
+
+      const kinds = usage.costByKind
+      const models = Array.isArray(usage.byModel) ? usage.byModel.filter((entry) => entry.requests > 0).slice(0, 4) : []
+      const row = (key, label, tokens, cost) =>
+        h(
+          'div',
+          { className: 'ud_popRow', key },
+          h('span', {}, label),
+          h('span', { className: 'ud_popMeta' }, f.compact(tokens)),
+          h('b', {}, f.money(cost ?? 0, usage.currency)),
+        )
+
+      const panel = h(
+        'div',
+        {
+          ref: panelRef,
+          className: 'ud_pop',
+          role: 'dialog',
+          'aria-label': translate(lang, 'costDetails'),
+          style: {
+            left: `${Math.max(12, Math.min(anchor.left, window.innerWidth - 456))}px`,
+            bottom: `${Math.max(12, window.innerHeight - anchor.top + 8)}px`,
+          },
+        },
+        h('div', { className: 'ud_popHead' }, h('span', {}, translate(lang, 'costDetails')), h('span', {}, f.money(usage.cost, usage.currency))),
+        h('div', { className: 'ud_popRule' }),
+        kinds === null || kinds === undefined ? null : [
+          row('input', translate(lang, 'rowInput'), usage.inputTokens, kinds.input),
+          row('cacheRead', translate(lang, 'rowCacheRead'), usage.cacheReadTokens, kinds.cacheRead),
+          kinds.cacheWrite > 0 ? row('cacheWrite', translate(lang, 'rowCacheWrite'), usage.cacheWriteTokens, kinds.cacheWrite) : null,
+          row('output', translate(lang, 'rowOutput'), usage.outputTokens, kinds.output),
+        ],
+        models.length === 0
+          ? null
+          : [
+              h('div', { className: 'ud_popSection', key: 'section' }, translate(lang, 'perModel')),
+              ...models.map((entry) =>
+                h(
+                  'div',
+                  { className: 'ud_popRow', key: entry.model },
+                  h('span', {}, entry.model),
+                  h('span', { className: 'ud_popMeta' }, `${f.plain(entry.requests)} req.`),
+                  h('b', {}, f.money(entry.cost, usage.currency)),
+                ),
+              ),
+            ],
+        h('div', { className: 'ud_popNote' }, translate(lang, 'costNote')),
+      )
+      return h(React.Fragment, null, button, panel)
     }
 
     /**
