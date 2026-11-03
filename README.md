@@ -28,34 +28,39 @@ No build step, no runtime dependency, no network access except the optional bala
 
 ## Requirements
 
-- A DeepSeek Harness installation with the Web UI (the desktop app, or `dsh web`).
-- Any profile that composes `@deepseek-ai/dsh-web-app` — the shipped `desktop` profile does.
+- DeepSeek Harness **0.2.1-rc.5 or newer**. The floor is declared as `engines.dsh`, so an older
+  Harness refuses the plugin with `incompatible-version` instead of loading half of it.
+- A profile that composes `@deepseek-ai/dsh-web-app` — the shipped `desktop` profile does.
 - Nothing else. The Host half uses only Node built-ins; the browser half requires `react` from the
   module loader the Harness already provides.
 
 ## Install
 
-### From a clone
+One spec is all it takes: the Harness fetches it, adds it to your profile, enables the bundle, and
+asks for a restart. Restart matters — the Host half loads at startup.
+
+### From the app (easiest)
+
+Ask the assistant to install `github:SimonMedy/dsh-usage`. It runs the plugin manager for you,
+which does the fetch, the profile edit, and the enablement in one go.
+
+### From a shell
 
 ```bash
-git clone https://github.com/SimonMedy/dsh-usage.git
+dsh plugin --profile desktop add github:SimonMedy/dsh-usage
 ```
 
-Then install that directory as a bundle in your profile. From a Harness session, ask the agent to
-run `plugin_manager` with `action: install_bundle` and the absolute path of the clone. The Plugin
-Manager links the directory into `~/.dsh/profiles/<profile>` and enables the bundle.
+### Specs the manager accepts
 
-Keep the clone where it is: the profile stores a `link:` to it, so moving or deleting the directory
-breaks the plugin at the next start.
+| Spec | What happens |
+|---|---|
+| `github:SimonMedy/dsh-usage` | clones the repository (needs `git`) and installs a copy |
+| `C:\path\to\dsh-usage` | links that directory; moving or deleting it breaks the plugin |
+| `dsh-usage@1.4.0` | registry install, once the package is published |
 
-### From npm (after publishing)
-
-```bash
-npm publish
-```
-
-then install the package spec `dsh-usage@1.0.0` the same way. An npm install copies the
-files into the profile instead of linking, so it survives moving the source directory.
+Every route ends the same way: the bundle is listed in `dsh.profile.bundles` of
+`~/.dsh/profiles/<profile>/package.json`, and the plugin's page, chips and cards appear at the next
+start.
 
 ## Configure prices
 
