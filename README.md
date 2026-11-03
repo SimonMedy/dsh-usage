@@ -38,7 +38,7 @@ No build step, no runtime dependency, no network access except the optional bala
 ### From a clone
 
 ```bash
-git clone https://github.com/<you>/dsh-usage.git
+git clone https://github.com/SimonMedy/dsh-usage.git
 ```
 
 Then install that directory as a bundle in your profile. From a Harness session, ask the agent to
