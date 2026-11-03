@@ -352,8 +352,21 @@ function foldSession(header, events, config) {
 
     const turn = Number(event.data.turn)
     if (Number.isSafeInteger(turn) && turn >= 0) {
-      const turnBucket = byTurn.get(turn) ?? emptyBucket()
+      const turnBucket = byTurn.get(turn) ?? {
+        ...emptyBucket(),
+        costByKind: { input: 0, cacheRead: 0, cacheWrite: 0, output: 0 },
+        model,
+        provider,
+      }
       addInto(turnBucket, tokens, cost)
+      turnBucket.costByKind.input += parts.input
+      turnBucket.costByKind.cacheRead += parts.cacheRead
+      turnBucket.costByKind.cacheWrite += parts.cacheWrite
+      turnBucket.costByKind.output += parts.output
+      // The row this chip sits in reports the last route of the Turn, so the
+      // panel names the model of the latest request.
+      turnBucket.model = model
+      turnBucket.provider = provider
       byTurn.set(turn, turnBucket)
     }
 

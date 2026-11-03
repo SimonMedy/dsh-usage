@@ -1422,9 +1422,10 @@ window.__ModuleLoader__.load({
     }
 
     /**
-     * The cost of one finalized assistant message, in the row that already
-     * carries copy, feedback, and the shipped usage chip. Clicking it opens the
-     * same breakdown for that single request.
+     * The cost of the Turn that ends on this message. The row it lives in —
+     * copy, feedback, the shipped "Usage N tok" chip, the clock — summarises the
+     * whole Turn, so the dollar figure must speak about the same scope: every
+     * request the Turn made, tool-call rounds included.
      */
     function MessageCostChip(props) {
       const lang = useLang()
@@ -1440,6 +1441,10 @@ window.__ModuleLoader__.load({
       if (usage === null || props.messageId === undefined || props.messageId === null) return null
       const entry = usage.byMessage[String(props.messageId)]
       if (entry === undefined) return null
+      // The Turn aggregate is the row's scope; the message entry only supplies
+      // the Turn number, and stands in when an older Host sent no Turn buckets.
+      const turn = usage.byTurn[String(entry.turn)]
+      const bucket = turn === undefined ? entry : turn
 
       const tr = (key) => translate(lang, key)
       const openAt = () => {
@@ -1456,16 +1461,18 @@ window.__ModuleLoader__.load({
           ref: buttonRef,
           type: 'button',
           className: 'ud_actionChip',
-          title: `${tr('messageCost')} · ${f.plain(entry.totalTokens)} tokens`,
+          title: `${tr('turnCost')} · ${f.plain(bucket.requests)} req. · ${f.compact(bucket.inputTokens + bucket.cacheReadTokens + bucket.cacheWriteTokens + bucket.outputTokens)} tokens`,
           'aria-haspopup': 'dialog',
           'aria-expanded': anchor !== null,
           onClick: openAt,
         },
         h(TagIcon, { size: 12 }),
-        h('span', {}, f.money(entry.cost, usage.currency)),
+        h('span', {}, f.money(bucket.cost, usage.currency)),
       )
       if (anchor === null) return button
 
+      const model = bucket.model ?? entry.model
+      const provider = bucket.provider ?? entry.provider
       return h(
         React.Fragment,
         null,
@@ -1473,10 +1480,10 @@ window.__ModuleLoader__.load({
         h(CostPopover, {
           anchor,
           title: tr('costDetails'),
-          meta: { label: tr('providerModel'), value: entry.provider ? `${entry.provider}/${entry.model}` : entry.model },
+          meta: { label: tr('providerModel'), value: provider ? `${provider}/${model}` : model },
           currency: usage.currency,
-          total: entry.cost,
-          rows: costRows(entry.costByKind, entry, tr),
+          total: bucket.cost,
+          rows: costRows(bucket.costByKind, bucket, tr),
           models: [],
           f,
           t: tr,
