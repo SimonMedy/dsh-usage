@@ -328,6 +328,7 @@ function foldSession(header, events, config) {
         requests: 1,
         turn: Number.isSafeInteger(turn) && turn >= 0 ? turn : 0,
         model,
+        provider,
         inputTokens: tokens.inputTokens,
         cacheReadTokens: tokens.cacheReadTokens,
         cacheWriteTokens: tokens.cacheWriteTokens,

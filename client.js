@@ -57,6 +57,7 @@ window.__ModuleLoader__.load({
       costChipTitle: 'Estimated cost of this Session',
       messageCost: 'Estimated cost of this message',
       costDetails: 'Cost breakdown',
+      providerModel: 'Provider / model',
       rowInput: 'Uncached input',
       rowCacheRead: 'Cached input',
       rowCacheWrite: 'Cache write',
@@ -112,6 +113,7 @@ window.__ModuleLoader__.load({
       costChipTitle: 'Coût estimé de cette conversation',
       messageCost: 'Coût estimé de ce message',
       costDetails: 'Détail du coût',
+      providerModel: 'Fournisseur / modèle',
       rowInput: 'Entrée non cachée',
       rowCacheRead: 'Entrée en cache',
       rowCacheWrite: 'Écriture en cache',
@@ -167,6 +169,7 @@ window.__ModuleLoader__.load({
       costChipTitle: '本会话预估费用',
       messageCost: '本条消息预估费用',
       costDetails: '费用明细',
+      providerModel: '提供方 / 模型',
       rowInput: '未缓存输入',
       rowCacheRead: '缓存输入',
       rowCacheWrite: '缓存写入',
@@ -516,7 +519,8 @@ window.__ModuleLoader__.load({
 .ud_popHead{display:flex;justify-content:space-between;gap:16px;margin-bottom:8px;color:var(--dsw-alias-label-primary);font-weight:500;font-variant-numeric:tabular-nums}
 .ud_popTitle{display:inline-flex;align-items:center;gap:6px;min-width:0}
 .ud_popTitle svg{width:14px;height:14px;flex:none}
-.ud_popSub{margin:-4px 0 8px;color:var(--dsw-alias-label-tertiary);font-size:11px;line-height:16px}
+.ud_popRowWide{grid-template-columns:minmax(76px,auto) minmax(0,1fr)}
+.ud_popValue{color:var(--dsw-alias-label-secondary);text-align:right;overflow-wrap:anywhere}
 .ud_popRule{border-top:.5px solid var(--dsw-alias-border-l2);margin-bottom:10px}
 .ud_popRow{display:grid;grid-template-columns:minmax(76px,auto) minmax(0,1fr) auto;gap:6px 16px;align-items:baseline;padding:1px 0;color:var(--dsw-alias-label-tertiary)}
 .ud_popRow b{color:var(--dsw-alias-label-secondary);font-weight:400;font-variant-numeric:tabular-nums;text-align:right}
@@ -1298,7 +1302,7 @@ window.__ModuleLoader__.load({
     }
 
     /** The shared breakdown dialog, anchored above the chip that opened it. */
-    function CostPopover({ anchor, title, subtitle, currency, total, rows, models, f, t, panelRef }) {
+    function CostPopover({ anchor, title, meta, currency, total, rows, models, f, t, panelRef }) {
       return h(
         'div',
         {
@@ -1317,8 +1321,15 @@ window.__ModuleLoader__.load({
           h('span', { className: 'ud_popTitle' }, h(TagIcon, { size: 14 }), h('span', {}, title)),
           h('span', {}, f.money(total, currency)),
         ),
-        subtitle === null || subtitle === undefined ? null : h('div', { className: 'ud_popSub' }, subtitle),
         h('div', { className: 'ud_popRule' }),
+        meta === null || meta === undefined
+          ? null
+          : h(
+              'div',
+              { className: 'ud_popRow ud_popRowWide', key: 'meta' },
+              h('span', {}, meta.label),
+              h('span', { className: 'ud_popValue' }, meta.value),
+            ),
         rows.map((row) =>
           h(
             'div',
@@ -1396,7 +1407,7 @@ window.__ModuleLoader__.load({
         h(CostPopover, {
           anchor,
           title: tr('costDetails'),
-          subtitle: null,
+          meta: null,
           currency: usage.currency,
           total: usage.cost,
           rows: costRows(usage.costByKind, usage, tr),
@@ -1460,7 +1471,7 @@ window.__ModuleLoader__.load({
         h(CostPopover, {
           anchor,
           title: tr('costDetails'),
-          subtitle: entry.model,
+          meta: { label: tr('providerModel'), value: entry.provider ? `${entry.provider}/${entry.model}` : entry.model },
           currency: usage.currency,
           total: entry.cost,
           rows: costRows(entry.costByKind, entry, tr),
