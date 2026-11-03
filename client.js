@@ -514,6 +514,8 @@ window.__ModuleLoader__.load({
    tokens are the ones the Harness uses for its own usage popovers. */
 .ud_pop{position:fixed;z-index:1100;box-sizing:border-box;width:max-content;min-width:min(300px,calc(100vw - 24px));max-width:min(440px,calc(100vw - 24px));border-radius:var(--dsw-radius-lg);background:var(--dsw-specific-menu);backdrop-filter:var(--dsw-menu-backdrop-filter);--dsw-elevation-stroke-color:var(--dsw-alias-border-l1);box-shadow:var(--dsw-elevation-prominent);color:var(--dsw-alias-label-secondary);cursor:default;border:0;padding:16px;font-size:12px;line-height:18px}
 .ud_popHead{display:flex;justify-content:space-between;gap:16px;margin-bottom:8px;color:var(--dsw-alias-label-primary);font-weight:500;font-variant-numeric:tabular-nums}
+.ud_popTitle{display:inline-flex;align-items:center;gap:6px;min-width:0}
+.ud_popTitle svg{width:14px;height:14px;flex:none}
 .ud_popRule{border-top:.5px solid var(--dsw-alias-border-l2);margin-bottom:10px}
 .ud_popRow{display:grid;grid-template-columns:minmax(76px,auto) minmax(0,1fr) auto;gap:6px 16px;align-items:baseline;padding:1px 0;color:var(--dsw-alias-label-tertiary)}
 .ud_popRow b{color:var(--dsw-alias-label-secondary);font-weight:400;font-variant-numeric:tabular-nums;text-align:right}
@@ -1316,7 +1318,12 @@ window.__ModuleLoader__.load({
             bottom: `${Math.max(12, window.innerHeight - anchor.top + 8)}px`,
           },
         },
-        h('div', { className: 'ud_popHead' }, h('span', {}, translate(lang, 'costDetails')), h('span', {}, f.money(usage.cost, usage.currency))),
+        h(
+          'div',
+          { className: 'ud_popHead' },
+          h('span', { className: 'ud_popTitle' }, h(TagIcon, { size: 14 }), h('span', {}, translate(lang, 'costDetails'))),
+          h('span', {}, f.money(usage.cost, usage.currency)),
+        ),
         h('div', { className: 'ud_popRule' }),
         kinds === null || kinds === undefined ? null : [
           row('input', translate(lang, 'rowInput'), usage.inputTokens, kinds.input),
