@@ -1,0 +1,1223 @@
+window.__ModuleLoader__.load({
+  id: '@local/dsh-usage-dashboard',
+  factory(require) {
+    const React = require('react')
+    const h = React.createElement
+    const { useState, useEffect, useCallback, useMemo, useRef } = React
+
+    /* ---------------------------------------------------------------- copy -- */
+
+    const NS = 'usageDashboard'
+
+    const en = {
+      panelTitle: 'Usage',
+      title: 'Usage',
+      subtitle: 'Local token usage and estimated cost, folded from every Session log on this machine.',
+      rangeToday: 'Today',
+      rangeYesterday: 'Yesterday',
+      range7: 'Last 7 days',
+      range30: 'Last 30 days',
+      rangeThisMonth: 'This month',
+      rangeLastMonth: 'Last month',
+      rangeCustom: 'Custom',
+      rangeFrom: 'From',
+      rangeTo: 'To',
+      rangeTitle: 'Period',
+      refresh: 'Refresh',
+      language: 'Language',
+      langAuto: 'Follow app',
+      cost: 'Estimated cost',
+      costNote: 'Published DeepSeek prices, peak and off-peak',
+      spendNote: 'Billed from balance:',
+      tokens: 'Tokens',
+      cached: 'cached',
+      requests: 'API requests',
+      requestsNote: 'One per model call',
+      balance: 'Account balance',
+      balanceNote: 'DeepSeek account',
+      balanceNoteApiKey: 'DeepSeek API key',
+      sessions: 'Sessions',
+      sessionsNote: 'With model calls in this window',
+      topUp: 'Top up',
+      perDay: 'Cost per day',
+      perModel: 'By model',
+      recent: 'Recent Sessions',
+      noData: 'No model call recorded in this window yet.',
+      loading: 'Loading usage…',
+      failed: 'Could not read usage.',
+      retry: 'Retry',
+      partial: 'Still folding older Session logs — figures may grow.',
+      subagent: 'subagent',
+      turnCost: 'Estimated cost of this turn',
+      costChipTitle: 'Estimated cost of this Session',
+      messageCost: 'Estimated cost of this message',
+      defaultPrice: 'default price',
+    }
+
+    const fr = {
+      panelTitle: 'Usage',
+      title: 'Usage',
+      subtitle: 'Consommation de tokens et coût estimé, calculés depuis les journaux de Session de cette machine.',
+      rangeToday: "Aujourd'hui",
+      rangeYesterday: 'Hier',
+      range7: '7 derniers jours',
+      range30: '30 derniers jours',
+      rangeThisMonth: 'Ce mois-ci',
+      rangeLastMonth: 'Le mois dernier',
+      rangeCustom: 'Personnalisé',
+      rangeFrom: 'Du',
+      rangeTo: 'Au',
+      rangeTitle: 'Période',
+      refresh: 'Actualiser',
+      language: 'Langue',
+      langAuto: "Langue de l'app",
+      cost: 'Coût estimé',
+      costNote: 'Prix publics DeepSeek, heures pleines et creuses',
+      spendNote: 'Débité du solde :',
+      tokens: 'Tokens',
+      cached: 'en cache',
+      requests: 'Requêtes API',
+      requestsNote: 'Une par appel au modèle',
+      balance: 'Solde du compte',
+      balanceNote: 'Compte DeepSeek',
+      balanceNoteApiKey: 'Clé API DeepSeek',
+      sessions: 'Sessions',
+      sessionsNote: 'Avec des appels dans cette fenêtre',
+      topUp: 'Recharger',
+      perDay: 'Coût par jour',
+      perModel: 'Par modèle',
+      recent: 'Sessions récentes',
+      noData: 'Aucun appel au modèle enregistré dans cette fenêtre.',
+      loading: 'Lecture de la consommation…',
+      failed: 'Impossible de lire la consommation.',
+      retry: 'Réessayer',
+      partial: 'Lecture des anciens journaux en cours — les chiffres peuvent augmenter.',
+      subagent: 'subagent',
+      turnCost: 'Coût estimé de ce tour',
+      costChipTitle: 'Coût estimé de cette conversation',
+      messageCost: 'Coût estimé de ce message',
+      defaultPrice: 'prix par défaut',
+    }
+
+    const zh = {
+      panelTitle: '用量',
+      title: '用量',
+      subtitle: '根据本机所有 Session 日志汇总的本地 token 用量与预估费用。',
+      rangeToday: '今天',
+      rangeYesterday: '昨天',
+      range7: '近 7 天',
+      range30: '近 30 天',
+      rangeThisMonth: '本月',
+      rangeLastMonth: '上个月',
+      rangeCustom: '自定义',
+      rangeFrom: '从',
+      rangeTo: '到',
+      rangeTitle: '时间范围',
+      refresh: '刷新',
+      language: '语言',
+      langAuto: '跟随应用',
+      cost: '预估费用',
+      costNote: 'DeepSeek 公开价格，含高峰与非高峰',
+      spendNote: '余额已扣：',
+      tokens: 'Tokens',
+      cached: '已缓存',
+      requests: 'API 请求',
+      requestsNote: '每次模型调用计一次',
+      balance: '账户余额',
+      balanceNote: 'DeepSeek 账户',
+      balanceNoteApiKey: 'DeepSeek API 密钥',
+      sessions: '会话',
+      sessionsNote: '本窗口内有模型调用的会话',
+      topUp: '充值',
+      perDay: '每日费用',
+      perModel: '按模型',
+      recent: '最近的会话',
+      noData: '本窗口内还没有模型调用记录。',
+      loading: '正在读取用量…',
+      failed: '无法读取用量。',
+      retry: '重试',
+      partial: '仍在读取更早的会话日志——数字可能继续增加。',
+      subagent: '子代理',
+      turnCost: '本轮预估费用',
+      costChipTitle: '本会话预估费用',
+      messageCost: '本条消息预估费用',
+      defaultPrice: '默认价格',
+    }
+
+    const DICTS = { en, fr, zh }
+    const LANG_KEY = 'dsh-usage-dashboard.lang'
+
+    /** The stored plugin language: 'auto' follows the application locale. */
+    function readStoredLang() {
+      try {
+        const stored = localStorage.getItem(LANG_KEY)
+        if (stored === 'en' || stored === 'fr' || stored === 'zh') return stored
+      } catch {}
+      return 'auto'
+    }
+
+    /** One language choice shared by the page, the sidebar label, and the turn chip. */
+    const langStore = {
+      value: readStoredLang(),
+      listeners: new Set(),
+      set(next) {
+        this.value = next
+        try {
+          if (next === 'auto') localStorage.removeItem(LANG_KEY)
+          else localStorage.setItem(LANG_KEY, next)
+        } catch {}
+        for (const listener of this.listeners) listener()
+      },
+    }
+
+    /** Re-render one component when the plugin language changes. */
+    function useLang() {
+      const [value, setValue] = useState(langStore.value)
+      useEffect(() => {
+        const listener = () => setValue(langStore.value)
+        langStore.listeners.add(listener)
+        return () => {
+          langStore.listeners.delete(listener)
+        }
+      }, [])
+      return value
+    }
+
+    /** Plugin choice first, then the application locale, then English. */
+    function translateWith(lang, fallback, key) {
+      if (lang !== 'auto') {
+        const dict = DICTS[lang] ?? en
+        return dict[key] ?? en[key] ?? key
+      }
+      if (typeof fallback === 'function') {
+        const value = fallback(key)
+        if (typeof value === 'string' && value.length > 0 && value !== key) return value
+      }
+      return en[key] ?? key
+    }
+
+    /* --------------------------------------------------------------- ranges -- */
+
+    const RANGE_KEY = 'dsh-usage-dashboard.range'
+    const PRESETS = ['today', 'yesterday', 'last7', 'last30', 'thisMonth', 'lastMonth', 'custom']
+    const RANGE_LABEL = {
+      today: 'rangeToday',
+      yesterday: 'rangeYesterday',
+      last7: 'range7',
+      last30: 'range30',
+      thisMonth: 'rangeThisMonth',
+      lastMonth: 'rangeLastMonth',
+      custom: 'rangeCustom',
+    }
+
+    /** `YYYY-MM-DD` for one local timestamp. */
+    function isoDay(time) {
+      const date = new Date(time)
+      const month = `${date.getMonth() + 1}`.padStart(2, '0')
+      const day = `${date.getDate()}`.padStart(2, '0')
+      return `${date.getFullYear()}-${month}-${day}`
+    }
+
+    /** Default window: the last 30 days ending today. */
+    function defaultRange() {
+      const today = new Date()
+      today.setHours(0, 0, 0, 0)
+      const from = new Date(today)
+      from.setDate(from.getDate() - 29)
+      return { preset: 'last30', from: isoDay(from.getTime()), to: isoDay(today.getTime()) }
+    }
+
+    /** Restore the last chosen range so a reload keeps the same window. */
+    function readStoredRange() {
+      try {
+        const raw = localStorage.getItem(RANGE_KEY)
+        if (typeof raw === 'string' && raw.length > 0) {
+          const parsed = JSON.parse(raw)
+          if (parsed !== null && typeof parsed === 'object' && PRESETS.includes(parsed.preset)) {
+            const fallback = defaultRange()
+            return {
+              preset: parsed.preset,
+              from: typeof parsed.from === 'string' ? parsed.from : fallback.from,
+              to: typeof parsed.to === 'string' ? parsed.to : fallback.to,
+            }
+          }
+        }
+      } catch {}
+      return defaultRange()
+    }
+
+    /** The query string the Host resolves into an inclusive window. */
+    function rangeQuery(range) {
+      const params = new URLSearchParams({ range: range.preset })
+      if (range.preset === 'custom') {
+        params.set('from', range.from)
+        params.set('to', range.to)
+      }
+      return params.toString()
+    }
+
+    /* ------------------------------------------------------------- helpers -- */
+
+    /** Document-relative API address, so a mounted or tokenized prefix keeps working. */
+    function apiUrl(path) {
+      return new URL(path, document.baseURI).toString()
+    }
+
+    const formatterCache = new Map()
+
+    /** Number and currency formatters bound to one locale (`undefined` = browser). */
+    function formatters(locale) {
+      const cacheKey = locale ?? '\u0000default'
+      const cached = formatterCache.get(cacheKey)
+      if (cached !== undefined) return cached
+      const compactFormat = new Intl.NumberFormat(locale, { notation: 'compact', maximumFractionDigits: 1 })
+      const plainFormat = new Intl.NumberFormat(locale, { maximumFractionDigits: 0 })
+      const built = {
+        locale,
+        compact: (value) => compactFormat.format(value),
+        plain: (value) => plainFormat.format(value),
+        money: (value, currency) => {
+          const digits = value > 0 && value < 0.01 ? 6 : value < 1 ? 4 : 2
+          const code = currency ?? 'USD'
+          let symbol = code
+          try {
+            const part = new Intl.NumberFormat(locale, { style: 'currency', currency: code, currencyDisplay: 'narrowSymbol' })
+              .formatToParts(0)
+              .find((entry) => entry.type === 'currency')
+            if (part !== undefined && part.value.length > 0) symbol = part.value
+          } catch {}
+          let number
+          try {
+            number = new Intl.NumberFormat(locale, { minimumFractionDigits: digits, maximumFractionDigits: digits }).format(value)
+          } catch {
+            number = value.toFixed(digits)
+          }
+          return `${symbol}${number} ${code}`
+        },
+      }
+      formatterCache.set(cacheKey, built)
+      return built
+    }
+
+    /** `YYYY-MM-DD` from the API rendered as a short local date. */
+    function shortDate(iso, locale) {
+      const text = String(iso)
+      const parts = text.split('-')
+      if (parts.length !== 3) return text
+      const date = new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]))
+      try {
+        return new Intl.DateTimeFormat(locale, { month: 'short', day: 'numeric' }).format(date)
+      } catch {
+        return text
+      }
+    }
+
+    /** Epoch milliseconds rendered as a short local day and time. */
+    function timeOf(ms, locale) {
+      try {
+        return new Intl.DateTimeFormat(locale, { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }).format(new Date(ms))
+      } catch {
+        return new Date(ms).toISOString()
+      }
+    }
+
+    function baseName(path) {
+      if (typeof path !== 'string' || path.length === 0) return ''
+      const parts = path.split(/[\\/]/u).filter(Boolean)
+      return parts.length > 0 ? parts[parts.length - 1] : path
+    }
+
+    /** `YYYY-MM-DD` to a local Date at midnight. */
+    function parseIsoDay(text) {
+      const parts = String(text).split('-')
+      if (parts.length !== 3) return new Date()
+      return new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]))
+    }
+
+    /** Month cursor (`{year, month}`) for one `YYYY-MM-DD` value. */
+    function monthOf(text) {
+      const date = parseIsoDay(text)
+      return { year: date.getFullYear(), month: date.getMonth() }
+    }
+
+    /** Move the month cursor by `delta` months. */
+    function shiftMonth(cursor, delta) {
+      const date = new Date(cursor.year, cursor.month + delta, 1)
+      return { year: date.getFullYear(), month: date.getMonth() }
+    }
+
+    /** Monday-first 6×7 day grid for one month cursor. */
+    function monthGrid(cursor) {
+      const first = new Date(cursor.year, cursor.month, 1)
+      const offset = (first.getDay() + 6) % 7
+      const start = new Date(cursor.year, cursor.month, 1 - offset)
+      const days = []
+      for (let index = 0; index < 42; index += 1) {
+        const date = new Date(start.getFullYear(), start.getMonth(), start.getDate() + index)
+        days.push({ key: isoDay(date.getTime()), day: date.getDate(), outside: date.getMonth() !== cursor.month })
+      }
+      return days
+    }
+
+    /** Monday-first weekday initials in the active locale. */
+    function weekdayLabels(locale) {
+      const labels = []
+      for (let index = 0; index < 7; index += 1) {
+        const date = new Date(2024, 0, 1 + index)
+        try {
+          const short = new Intl.DateTimeFormat(locale, { weekday: 'short' }).format(date)
+          labels.push(short.slice(0, 2))
+        } catch {
+          labels.push(String(date.getDate()))
+        }
+      }
+      return labels
+    }
+
+    /** Long month and year for the calendar heading. */
+    function monthTitle(cursor, locale) {
+      try {
+        return new Intl.DateTimeFormat(locale, { month: 'long', year: 'numeric' }).format(new Date(cursor.year, cursor.month, 1))
+      } catch {
+        return `${cursor.year}-${`${cursor.month + 1}`.padStart(2, '0')}`
+      }
+    }
+
+    /** `YYYY-MM-DD` rendered as a short readable date. */
+    function fieldDate(text, locale) {
+      try {
+        return new Intl.DateTimeFormat(locale, { day: '2-digit', month: '2-digit', year: 'numeric' }).format(parseIsoDay(text))
+      } catch {
+        return String(text)
+      }
+    }
+
+
+    const CSS = `
+.ud_page{height:100%;overflow:auto;padding:30px 36px 56px;color:var(--dsw-alias-label-primary);box-sizing:border-box}
+.ud_inner{max-width:1140px;margin:0 auto;display:flex;flex-direction:column;gap:18px}
+.ud_head{display:flex;align-items:flex-start;justify-content:space-between;gap:16px}
+.ud_title{margin:0;font-size:26px;line-height:32px;font-weight:600;letter-spacing:-.01em}
+.ud_sub{margin:6px 0 0;font-size:13px;line-height:20px;color:var(--dsw-alias-label-secondary);max-width:62ch}
+.ud_actions{display:flex;align-items:center;justify-content:flex-end;gap:8px;flex:0 0 auto;flex-wrap:wrap}
+.ud_seg{display:inline-flex;background:var(--dsw-alias-bg-layer-2);border:1px solid var(--dsw-alias-border-l1);border-radius:10px;padding:2px;gap:2px}
+.ud_segBtn{appearance:none;border:0;background:transparent;color:var(--dsw-alias-label-secondary);font:inherit;font-size:12px;line-height:18px;padding:5px 10px;border-radius:8px;cursor:pointer}
+.ud_segBtn[data-active="true"]{background:var(--dsw-alias-bg-layer-1);color:var(--dsw-alias-label-primary);box-shadow:0 1px 2px rgba(0,0,0,.18)}
+.ud_btn{appearance:none;border:1px solid var(--dsw-alias-border-l1);background:var(--dsw-alias-bg-layer-1);color:var(--dsw-alias-label-primary);font:inherit;font-size:12px;line-height:18px;padding:6px 12px;border-radius:9px;cursor:pointer}
+.ud_btn:hover{border-color:var(--dsw-alias-border-l2)}
+.ud_btn:disabled{opacity:.55;cursor:default}
+.ud_select{appearance:none;border:1px solid var(--dsw-alias-border-l1);background:var(--dsw-alias-bg-layer-1);color:var(--dsw-alias-label-primary);font:inherit;font-size:12px;line-height:18px;padding:6px 10px;border-radius:9px;cursor:pointer}
+.ud_picker{position:relative;flex:none}
+.ud_field{display:inline-flex;align-items:center;gap:7px;max-width:230px;height:32px;box-sizing:border-box;appearance:none;border:1px solid var(--dsw-alias-border-l1);background:var(--dsw-alias-bg-layer-1);color:var(--dsw-alias-label-primary);font:inherit;font-size:12px;line-height:18px;padding:0 10px;border-radius:10px;cursor:pointer}
+.ud_field:hover{border-color:var(--dsw-alias-border-l2)}
+.ud_field:focus-visible{outline:2px solid var(--dsw-alias-brand-primary);outline-offset:1px}
+.ud_fieldText{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ud_chevron{flex:none;opacity:.7}
+.ud_calendar{flex:none;opacity:.75;margin-left:2px}
+.ud_fieldDate{min-width:134px;justify-content:space-between}
+.ud_menu{position:absolute;top:calc(100% + 6px);right:0;z-index:40;min-width:190px;max-height:340px;overflow:auto;background:var(--dsw-alias-bg-layer-1);border:1px solid var(--dsw-alias-border-l2);border-radius:12px;padding:5px;box-shadow:0 12px 34px rgba(0,0,0,.32)}
+.ud_menuItem{display:flex;align-items:center;justify-content:space-between;gap:12px;width:100%;appearance:none;border:0;background:transparent;color:var(--dsw-alias-label-primary);font:inherit;font-size:12.5px;line-height:18px;padding:7px 10px;border-radius:8px;cursor:pointer;text-align:left}
+.ud_menuItem:hover{background:var(--dsw-alias-bg-layer-2)}
+.ud_menuItemActive{background:var(--dsw-alias-bg-layer-2)}
+.ud_check{flex:none;color:var(--dsw-alias-brand-primary)}
+.ud_cal{position:absolute;top:calc(100% + 6px);right:0;z-index:40;width:248px;background:var(--dsw-alias-bg-layer-1);border:1px solid var(--dsw-alias-border-l2);border-radius:12px;padding:10px;box-shadow:0 12px 34px rgba(0,0,0,.32)}
+.ud_calHead{display:flex;align-items:center;justify-content:space-between;gap:6px;margin-bottom:8px}
+.ud_calTitle{font-size:12.5px;font-weight:600;text-transform:capitalize}
+.ud_calNav{appearance:none;border:1px solid var(--dsw-alias-border-l1);background:transparent;color:var(--dsw-alias-label-secondary);width:24px;height:24px;border-radius:7px;cursor:pointer;font-size:14px;line-height:1;padding:0}
+.ud_calNav:hover{border-color:var(--dsw-alias-border-l2);color:var(--dsw-alias-label-primary)}
+.ud_calWeek{display:grid;grid-template-columns:repeat(7,1fr);gap:2px;margin-bottom:2px}
+.ud_calWeek span{font-size:10px;text-align:center;color:var(--dsw-alias-label-secondary);padding:2px 0;text-transform:uppercase}
+.ud_calGrid{display:grid;grid-template-columns:repeat(7,1fr);gap:2px}
+.ud_calDay{appearance:none;border:1px solid transparent;background:transparent;color:var(--dsw-alias-label-primary);font:inherit;font-size:11.5px;height:28px;border-radius:7px;cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0}
+.ud_calDay:hover{background:var(--dsw-alias-bg-layer-2)}
+.ud_calDayOutside{color:var(--dsw-alias-label-secondary);opacity:.45}
+.ud_calDayToday{border-color:var(--dsw-alias-border-l2)}
+.ud_calDaySelected{background:var(--dsw-alias-bg-layer-2);color:var(--dsw-alias-label-primary);box-shadow:inset 0 0 0 1.5px var(--dsw-alias-brand-primary);font-weight:600}
+.ud_calDaySelected:hover{background:var(--dsw-alias-bg-layer-2)}
+.ud_calDay:disabled{opacity:.25;cursor:default}
+.ud_calFoot{display:flex;justify-content:flex-end;margin-top:8px}
+.ud_link{appearance:none;border:0;background:transparent;color:var(--dsw-alias-brand-primary);font:inherit;font-size:11.5px;cursor:pointer;padding:2px 4px;border-radius:6px}
+.ud_link:hover{text-decoration:underline}
+.ud_cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(215px,1fr));gap:12px}
+.ud_card{background:var(--dsw-alias-bg-layer-1);border:1px solid var(--dsw-alias-border-l1);border-radius:14px;padding:16px 18px;display:flex;flex-direction:column;gap:4px;min-width:0}
+.ud_label{font-size:12px;line-height:18px;color:var(--dsw-alias-label-secondary)}
+.ud_valueRow{display:flex;align-items:baseline;gap:6px;min-width:0}
+.ud_value{font-size:29px;line-height:34px;font-weight:600;letter-spacing:-.02em;font-variant-numeric:tabular-nums;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ud_unit{font-size:12px;color:var(--dsw-alias-label-secondary)}
+.ud_note{font-size:12px;line-height:17px;color:var(--dsw-alias-label-secondary);min-height:17px}
+.ud_note a{color:var(--dsw-alias-brand-primary);text-decoration:none}
+.ud_note a:hover{text-decoration:underline}
+.ud_panel{background:var(--dsw-alias-bg-layer-1);border:1px solid var(--dsw-alias-border-l1);border-radius:14px;padding:16px 18px 14px;min-width:0}
+.ud_panelHead{display:flex;align-items:baseline;justify-content:space-between;gap:12px;margin-bottom:10px}
+.ud_panelTitle{font-size:13px;line-height:20px;font-weight:600}
+.ud_panelMeta{font-size:12px;color:var(--dsw-alias-label-secondary)}
+.ud_chart{display:block;width:100%;height:auto}
+.ud_bar{fill:var(--dsw-alias-brand-primary)}
+.ud_grid{stroke:var(--dsw-alias-border-l1);stroke-width:1}
+.ud_axis{fill:var(--dsw-alias-label-secondary);font-size:10px;font-family:inherit}
+.ud_split{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+@media (max-width:980px){.ud_split{grid-template-columns:1fr}}
+.ud_rows{display:flex;flex-direction:column}
+.ud_row{display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:10px;align-items:baseline;padding:8px 0;border-top:1px solid var(--dsw-alias-border-l1)}
+.ud_row:first-child{border-top:0}
+.ud_rowName{font-size:12.5px;line-height:18px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ud_rowMeta{font-size:11px;line-height:16px;color:var(--dsw-alias-label-secondary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ud_rowValue{font-size:12.5px;font-variant-numeric:tabular-nums;white-space:nowrap}
+.ud_rowTag{display:inline-block;font-size:10px;line-height:14px;padding:0 5px;border-radius:5px;border:1px solid var(--dsw-alias-border-l1);color:var(--dsw-alias-label-secondary);margin-left:6px;vertical-align:1px}
+.ud_empty{padding:26px 0;text-align:center;color:var(--dsw-alias-label-secondary);font-size:13px}
+.ud_banner{font-size:12px;line-height:18px;color:var(--dsw-alias-label-secondary);background:var(--dsw-alias-bg-layer-2);border:1px solid var(--dsw-alias-border-l1);border-radius:10px;padding:8px 12px}
+.ud_error{color:var(--dsw-alias-state-error-primary)}
+.ud_actionChip{box-sizing:border-box;min-width:0;height:calc(28px + var(--dsh-content-font-delta,0px));border-radius:var(--dsw-radius-sm);color:var(--dsw-alias-label-tertiary);font-size:calc(var(--dsh-content-font-size-secondary,13px) - 1px);font-variant-numeric:tabular-nums;line-height:calc(24px + var(--dsh-content-font-delta,0px));white-space:nowrap;border:none;background:0 0;align-items:center;gap:4px;padding:6px 8px;display:inline-flex;order:2;align-self:center;cursor:default}
+.ud_actionChip:hover{background:var(--dsw-alias-interactive-bg-hover)}
+.ud_actionChip svg{width:calc(15px + var(--dsh-content-font-delta,0px));height:calc(15px + var(--dsh-content-font-delta,0px));flex:none}
+/* The row keeps usage and the clock inside one inline-flex span, which a slot
+   entry can only follow. Opening that span puts both back into the row's flex
+   line, so the cost can sit between them, right of the usage chip. If a future
+   build changes that structure the rules stop matching and the chip simply
+   stays after the group. */
+[data-clock="end"] > span:last-child{display:contents}
+[data-clock="end"] > span:last-child > *:last-child{order:3}
+.ud_footCost{display:inline-flex;align-items:center;gap:5px;font-size:12px;line-height:18px;color:var(--dsw-alias-label-secondary);font-variant-numeric:tabular-nums;white-space:nowrap}
+.ud_footCost svg{flex:none;opacity:.85}
+.ud_sideRow{box-sizing:border-box;user-select:none;border-radius:var(--dsw-radius-md);width:100%;flex:none;height:32px;color:var(--dsw-alias-label-primary);font:inherit;font-size:14px;cursor:pointer;background:0 0;border:0;align-items:center;gap:8px;padding:6px 2px 6px 3px;line-height:20px;display:flex;text-align:left;overflow:hidden;margin:0}
+.ud_sideRow:hover{background:var(--dsw-alias-interactive-bg-hover)}
+.ud_sideRow[aria-current="page"]{background:var(--dsw-alias-bg-layer-2)}
+.ud_sideLabel{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.ud_sideIcon{box-sizing:border-box;border-radius:var(--dsw-radius-md);border:0;background:0 0;color:var(--dsw-alias-label-primary);cursor:pointer;justify-content:center;align-items:center;gap:0;width:36px;height:36px;flex:none;margin:0;padding:0;display:inline-flex}
+.ud_sideIcon:hover{background:var(--dsw-alias-interactive-bg-hover)}
+`
+
+    const tagId = '@local/dsh-usage-dashboard/page.css'
+
+    function ensureStyles() {
+      if (typeof document === 'undefined') return
+      const existing = document.querySelector(`style[data-plugin-css="${tagId}"]`)
+      if (existing !== null) {
+        // A hot-reloaded module reuses the tag from the previous load; refresh
+        // its content so new rules are not silently missing.
+        if (existing.textContent !== CSS) existing.textContent = CSS
+        return
+      }
+      const tag = document.createElement('style')
+      tag.dataset.plugin = '@local/dsh-usage-dashboard'
+      tag.dataset.pluginCss = tagId
+      tag.textContent = CSS
+      document.head.appendChild(tag)
+    }
+
+    /* ----------------------------------------------------------------- data -- */
+
+    /** Load the window aggregate; keeps the previous figures visible while refreshing. */
+    function useSummary(query) {
+      const [state, setState] = useState({ status: 'loading', data: null, error: null })
+      const [nonce, setNonce] = useState(0)
+
+      useEffect(() => {
+        let cancelled = false
+        setState((previous) => ({ ...previous, status: previous.data ? 'refreshing' : 'loading' }))
+        fetch(apiUrl(`api/usage.summary?${query}`), { headers: { accept: 'application/json' }, credentials: 'same-origin' })
+          .then(async (response) => {
+            if (response.ok) return response.json()
+            let message = `${response.status} ${response.statusText}`
+            try {
+              const body = await response.json()
+              if (body && typeof body.error === 'string') message = body.error
+            } catch {}
+            throw new Error(message)
+          })
+          .then((data) => {
+            if (!cancelled) setState({ status: 'ready', data, error: null })
+          })
+          .catch((error) => {
+            if (!cancelled) setState({ status: 'error', data: null, error: String((error && error.message) || error) })
+          })
+        return () => {
+          cancelled = true
+        }
+      }, [query, nonce])
+
+      const refresh = useCallback(() => setNonce((value) => value + 1), [])
+      return { ...state, refresh }
+    }
+
+    /**
+     * Per-Session turn costs, fetched once per Session and shared by every
+     * turn chip on screen.
+     */
+    const turnCache = new Map()
+
+    function useTurnCosts(sessionId, refreshMs = 0) {
+      const [entry, setEntry] = useState(() => (sessionId ? turnCache.get(String(sessionId)) : undefined) ?? null)
+      const [nonce, setNonce] = useState(0)
+      useEffect(() => {
+        if (refreshMs <= 0) return undefined
+        const timer = setInterval(() => setNonce((value) => value + 1), refreshMs)
+        return () => clearInterval(timer)
+      }, [refreshMs])
+      useEffect(() => {
+        const id = sessionId ? String(sessionId) : null
+        if (id === null) return undefined
+        const cached = turnCache.get(id)
+        if (cached !== undefined && Date.now() - cached.at < (refreshMs > 0 ? 12000 : 30000)) {
+          setEntry(cached)
+          return undefined
+        }
+        let cancelled = false
+        fetch(apiUrl(`api/usage.session?sessionId=${encodeURIComponent(id)}`), {
+          headers: { accept: 'application/json' },
+          credentials: 'same-origin',
+        })
+          .then((response) => (response.ok ? response.json() : undefined))
+          .then((data) => {
+            if (cancelled || data === undefined) return
+            const next = { at: Date.now(), currency: data.currency, byTurn: data.byTurn ?? {}, byMessage: data.byMessage ?? {}, requests: data.requests, cost: data.cost }
+            turnCache.set(id, next)
+            setEntry(next)
+          })
+          .catch(() => undefined)
+        return () => {
+          cancelled = true
+        }
+      }, [sessionId, nonce, refreshMs])
+      return entry
+    }
+
+    /* ------------------------------------------------------------ rendering -- */
+
+    function StatCard({ label, value, unit, note, children }) {
+      return h(
+        'div',
+        { className: 'ud_card' },
+        h('div', { className: 'ud_label' }, label),
+        h('div', { className: 'ud_valueRow' }, h('div', { className: 'ud_value' }, value), unit ? h('div', { className: 'ud_unit' }, unit) : null),
+        children ?? (note ? h('div', { className: 'ud_note' }, note) : null),
+      )
+    }
+
+    function DayChart({ days, currency, f, t }) {
+      const width = 760
+      const height = 190
+      const padTop = 10
+      const padBottom = 20
+      const innerHeight = height - padTop - padBottom
+      const counts = days.length > 0 ? days : []
+      const max = counts.reduce((peak, day) => Math.max(peak, day.cost), 0)
+      const scale = max > 0 ? max : 1
+      const step = width / Math.max(counts.length, 1)
+      const barWidth = Math.max(3, Math.min(step * 0.55, step > 120 ? 72 : 22))
+      const elements = []
+
+      for (let line = 0; line <= 2; line += 1) {
+        const y = padTop + (innerHeight / 2) * line
+        elements.push(h('line', { key: `grid-${line}`, className: 'ud_grid', x1: 0, x2: width, y1: y, y2: y }))
+      }
+
+      counts.forEach((day, index) => {
+        if (day.cost <= 0) return
+        const barHeight = Math.max(2, (day.cost / scale) * innerHeight)
+        const x = step * index + (step - barWidth) / 2
+        elements.push(
+          h(
+            'rect',
+            {
+              key: day.date,
+              className: 'ud_bar',
+              x,
+              y: padTop + innerHeight - barHeight,
+              width: barWidth,
+              height: barHeight,
+              rx: Math.min(3, barWidth / 2),
+            },
+            h('title', {}, `${shortDate(day.date, f.locale)} · ${f.money(day.cost, currency)} · ${f.plain(day.totalTokens)} tokens · ${day.requests} req.`),
+          ),
+        )
+      })
+
+      const labelStep = Math.max(1, Math.ceil(counts.length / 6))
+      counts.forEach((day, index) => {
+        if (index % labelStep !== 0 && index !== counts.length - 1) return
+        const x = step * index + step / 2
+        elements.push(
+          h('text', { key: `label-${day.date}`, className: 'ud_axis', x, y: height - 4, textAnchor: 'middle' }, shortDate(day.date, f.locale)),
+        )
+      })
+
+      return h(
+        'svg',
+        { className: 'ud_chart', viewBox: `0 0 ${width} ${height}`, role: 'img', 'aria-label': t('perDay') },
+        elements,
+      )
+    }
+
+    function ModelRows({ models, currency, f, t }) {
+      if (models.length === 0) return h('div', { className: 'ud_empty' }, t('noData'))
+      return h(
+        'div',
+        { className: 'ud_rows' },
+        models.map((model) =>
+          h(
+            'div',
+            { key: model.model, className: 'ud_row' },
+            h(
+              'div',
+              { style: { minWidth: 0 } },
+              h('div', { className: 'ud_rowName' }, model.model, model.priced === false ? h('span', { className: 'ud_rowTag', title: t('defaultPrice') }, t('defaultPrice')) : null),
+              h('div', { className: 'ud_rowMeta' }, `${f.plain(model.requests)} req. · ${f.compact(model.inputTokens + model.cacheReadTokens)} in · ${f.compact(model.outputTokens)} out`),
+            ),
+            h('div', { className: 'ud_rowValue', style: { color: 'var(--dsw-alias-label-secondary)' } }, f.compact(model.inputTokens + model.cacheReadTokens + model.outputTokens)),
+            h('div', { className: 'ud_rowValue' }, f.money(model.cost, currency)),
+          ),
+        ),
+      )
+    }
+
+    function SessionRows({ sessions, currency, f, t }) {
+      if (sessions.length === 0) return h('div', { className: 'ud_empty' }, t('noData'))
+      return h(
+        'div',
+        { className: 'ud_rows' },
+        sessions.map((session) =>
+          h(
+            'div',
+            { key: session.id, className: 'ud_row' },
+            h(
+              'div',
+              { style: { minWidth: 0 } },
+              h(
+                'div',
+                { className: 'ud_rowName', title: session.id },
+                session.title ?? (baseName(session.cwd) || session.id),
+                session.subagent ? h('span', { className: 'ud_rowTag' }, t('subagent')) : null,
+              ),
+              h('div', { className: 'ud_rowMeta' }, `${timeOf(session.lastTime, f.locale)} · ${f.plain(session.requests)} req. · ${f.compact(session.totalTokens)} tokens`),
+            ),
+            h('div', { className: 'ud_rowValue', style: { color: 'var(--dsw-alias-label-secondary)' } }, f.money(session.cost / Math.max(session.requests, 1), currency)),
+            h('div', { className: 'ud_rowValue' }, f.money(session.cost, currency)),
+          ),
+        ),
+      )
+    }
+
+    /** Rounded dropdown used for the language and the period pickers. */
+    function Picker({ label, value, options, onChange }) {
+      const [open, setOpen] = useState(false)
+      const host = useRef(null)
+
+      useEffect(() => {
+        if (!open) return undefined
+        const onDown = (event) => {
+          if (host.current !== null && !host.current.contains(event.target)) setOpen(false)
+        }
+        const onKey = (event) => {
+          if (event.key === 'Escape') setOpen(false)
+        }
+        document.addEventListener('mousedown', onDown)
+        document.addEventListener('keydown', onKey)
+        return () => {
+          document.removeEventListener('mousedown', onDown)
+          document.removeEventListener('keydown', onKey)
+        }
+      }, [open])
+
+      const current = options.find((option) => option.value === value)
+      return h(
+        'div',
+        { className: 'ud_picker', ref: host },
+        h(
+          'button',
+          {
+            type: 'button',
+            className: 'ud_field',
+            'aria-haspopup': 'listbox',
+            'aria-expanded': open,
+            'aria-label': label,
+            title: label,
+            onClick: () => setOpen((value) => !value),
+          },
+          h('span', { className: 'ud_fieldText' }, current === undefined ? value : current.label),
+          h(
+            'svg',
+            { className: 'ud_chevron', width: 10, height: 10, viewBox: '0 0 10 10', fill: 'none', 'aria-hidden': true },
+            h('path', { d: 'M1.5 3.5 5 7l3.5-3.5', stroke: 'currentColor', strokeWidth: 1.4, strokeLinecap: 'round', strokeLinejoin: 'round' }),
+          ),
+        ),
+        open
+          ? h(
+              'div',
+              { className: 'ud_menu', role: 'listbox' },
+              options.map((option) =>
+                h(
+                  'button',
+                  {
+                    key: option.value,
+                    type: 'button',
+                    role: 'option',
+                    'aria-selected': option.value === value,
+                    className: option.value === value ? 'ud_menuItem ud_menuItemActive' : 'ud_menuItem',
+                    onClick: () => {
+                      setOpen(false)
+                      if (option.value !== value) onChange(option.value)
+                    },
+                  },
+                  h('span', {}, option.label),
+                  option.value === value
+                    ? h(
+                        'svg',
+                        { className: 'ud_check', width: 12, height: 12, viewBox: '0 0 12 12', fill: 'none', 'aria-hidden': true },
+                        h('path', { d: 'M2 6.4 4.6 9 10 3.4', stroke: 'currentColor', strokeWidth: 1.6, strokeLinecap: 'round', strokeLinejoin: 'round' }),
+                      )
+                    : null,
+                ),
+              ),
+            )
+          : null,
+      )
+    }
+
+    /** One date field with a rounded calendar popover. */
+    function DateField({ label, value, min, max, locale, onChange }) {
+      const [open, setOpen] = useState(false)
+      const [cursor, setCursor] = useState(() => monthOf(value))
+      const host = useRef(null)
+
+      useEffect(() => {
+        if (!open) return undefined
+        setCursor(monthOf(value))
+        const onDown = (event) => {
+          if (host.current !== null && !host.current.contains(event.target)) setOpen(false)
+        }
+        const onKey = (event) => {
+          if (event.key === 'Escape') setOpen(false)
+        }
+        document.addEventListener('mousedown', onDown)
+        document.addEventListener('keydown', onKey)
+        return () => {
+          document.removeEventListener('mousedown', onDown)
+          document.removeEventListener('keydown', onKey)
+        }
+      }, [open, value])
+
+      const today = isoDay(Date.now())
+      const labels = weekdayLabels(locale)
+      const days = monthGrid(cursor)
+      const pick = (key) => {
+        setOpen(false)
+        if (key !== value) onChange(key)
+      }
+
+      return h(
+        'div',
+        { className: 'ud_picker', ref: host },
+        h(
+          'button',
+          {
+            type: 'button',
+            className: 'ud_field ud_fieldDate',
+            'aria-haspopup': 'dialog',
+            'aria-expanded': open,
+            'aria-label': `${label} ${fieldDate(value, locale)}`,
+            title: label,
+            onClick: () => setOpen((current) => !current),
+          },
+          h('span', { className: 'ud_fieldText' }, fieldDate(value, locale)),
+          h(
+            'svg',
+            { className: 'ud_calendar', width: 13, height: 13, viewBox: '0 0 16 16', fill: 'none', 'aria-hidden': true },
+            h('rect', { x: 2.2, y: 3.4, width: 11.6, height: 10.2, rx: 2, stroke: 'currentColor', strokeWidth: 1.2 }),
+            h('path', { d: 'M2.2 6.6h11.6M5.4 2.2v2.4M10.6 2.2v2.4', stroke: 'currentColor', strokeWidth: 1.2, strokeLinecap: 'round' }),
+          ),
+        ),
+        open
+          ? h(
+              'div',
+              { className: 'ud_cal' },
+              h(
+                'div',
+                { className: 'ud_calHead' },
+                h('button', { type: 'button', className: 'ud_calNav', 'aria-label': '‹', onClick: () => setCursor(shiftMonth(cursor, -1)) }, '‹'),
+                h('div', { className: 'ud_calTitle' }, monthTitle(cursor, locale)),
+                h('button', { type: 'button', className: 'ud_calNav', 'aria-label': '›', onClick: () => setCursor(shiftMonth(cursor, 1)) }, '›'),
+              ),
+              h('div', { className: 'ud_calWeek' }, labels.map((name, index) => h('span', { key: `${name}-${index}` }, name))),
+              h(
+                'div',
+                { className: 'ud_calGrid' },
+                days.map((cell) => {
+                  const disabled = (min !== undefined && cell.key < min) || (max !== undefined && cell.key > max)
+                  const className = [
+                    'ud_calDay',
+                    cell.outside ? 'ud_calDayOutside' : '',
+                    cell.key === value ? 'ud_calDaySelected' : '',
+                    cell.key === today ? 'ud_calDayToday' : '',
+                  ]
+                    .filter(Boolean)
+                    .join(' ')
+                  return h(
+                    'button',
+                    { key: cell.key, type: 'button', className, disabled, onClick: () => pick(cell.key) },
+                    cell.day,
+                  )
+                }),
+              ),
+              h(
+                'div',
+                { className: 'ud_calFoot' },
+                h('button', { type: 'button', className: 'ud_link', onClick: () => pick(today) }, fieldDate(today, locale)),
+              ),
+            )
+          : null,
+      )
+    }
+
+    function UsagePage(props) {
+      const appTranslate = typeof props.t === 'function' ? props.t : undefined
+      const lang = useLang()
+      const t = useCallback((key) => translateWith(lang, appTranslate, key), [lang, appTranslate])
+      const f = useMemo(() => formatters(lang === 'auto' ? undefined : lang), [lang])
+      const [range, setRange] = useState(readStoredRange)
+      const query = rangeQuery(range)
+      const { status, data, error, refresh } = useSummary(query)
+      const updateRange = useCallback((next) => {
+        setRange(next)
+        try {
+          localStorage.setItem(RANGE_KEY, JSON.stringify(next))
+        } catch {}
+      }, [])
+
+      useEffect(() => {
+        ensureStyles()
+        const timer = setInterval(refresh, 60000)
+        return () => clearInterval(timer)
+      }, [refresh])
+
+      const currency = (data && data.currency) || 'USD'
+      const totals = data ? data.totals : null
+      const balanceWallet = useMemo(() => {
+        if (!data || !data.account || !Array.isArray(data.account.wallets)) return null
+        return data.account.wallets.find((wallet) => wallet.currency === 'USD') ?? data.account.wallets[0] ?? null
+      }, [data])
+
+      const cacheRate = totals && totals.totalTokens > 0 ? (totals.cacheReadTokens / (totals.cacheReadTokens + totals.inputTokens)) * 100 : 0
+
+      const head = h(
+        'div',
+        { className: 'ud_head' },
+        h(
+          'div',
+          {},
+          h('h1', { className: 'ud_title' }, t('title')),
+          h('p', { className: 'ud_sub' }, t('subtitle')),
+        ),
+        h(
+          'div',
+          { className: 'ud_actions' },
+          h(Picker, {
+            label: t('language'),
+            value: lang,
+            options: [
+              { value: 'auto', label: t('langAuto') },
+              { value: 'en', label: 'English' },
+              { value: 'fr', label: 'Français' },
+              { value: 'zh', label: '中文' },
+            ],
+            onChange: (value) => langStore.set(value),
+          }),
+          h(Picker, {
+            label: t('rangeTitle'),
+            value: range.preset,
+            options: PRESETS.map((preset) => ({ value: preset, label: t(RANGE_LABEL[preset]) })),
+            onChange: (value) => updateRange({ ...range, preset: value }),
+          }),
+          range.preset === 'custom'
+            ? [
+                h(DateField, {
+                  key: 'from',
+                  label: t('rangeFrom'),
+                  value: range.from,
+                  max: range.to,
+                  locale: f.locale,
+                  onChange: (value) => updateRange({ ...range, from: value }),
+                }),
+                h(DateField, {
+                  key: 'to',
+                  label: t('rangeTo'),
+                  value: range.to,
+                  min: range.from,
+                  locale: f.locale,
+                  onChange: (value) => updateRange({ ...range, to: value }),
+                }),
+              ]
+            : null,
+          h('button', { type: 'button', className: 'ud_btn', onClick: refresh, disabled: status === 'loading' || status === 'refreshing' }, t('refresh')),
+        ),
+      )
+
+      if (status === 'loading' && data === null) {
+        return h('div', { className: 'ud_page' }, h('div', { className: 'ud_inner' }, head, h('div', { className: 'ud_empty' }, t('loading'))))
+      }
+
+      if (data === null) {
+        return h(
+          'div',
+          { className: 'ud_page' },
+          h(
+            'div',
+            { className: 'ud_inner' },
+            head,
+            h(
+              'div',
+              { className: 'ud_panel' },
+              h('div', { className: 'ud_empty ud_error' }, `${t('failed')} ${error ?? ''}`),
+              h('div', { style: { textAlign: 'center' } }, h('button', { type: 'button', className: 'ud_btn', onClick: refresh }, t('retry'))),
+            ),
+          ),
+        )
+      }
+
+      const originLabel = data.account !== null && data.account !== undefined && data.account.source === 'api-key' ? t('balanceNoteApiKey') : t('balanceNote')
+      const knownPreset = Object.hasOwn(RANGE_LABEL, data.range ?? range.preset) ? (data.range ?? range.preset) : range.preset
+      const rangeLabel = knownPreset === 'custom' ? `${range.from} → ${range.to}` : t(RANGE_LABEL[knownPreset])
+
+      const cards = h(
+        'div',
+        { className: 'ud_cards' },
+        h(StatCard, {
+          label: t('cost'),
+          value: f.money(totals.cost, currency),
+          children: [
+            data.spend !== null && data.spend !== undefined
+              ? h('div', { className: 'ud_note' }, `${t('spendNote')} ${f.money(data.spend.amount, currency)}`)
+              : null,
+            h('div', { className: 'ud_note' }, t('costNote')),
+          ],
+        }),
+        h(StatCard, {
+          label: t('tokens'),
+          value: f.compact(totals.totalTokens),
+          unit: 'tokens',
+          note: `${f.plain(totals.requests)} req. · ${f.compact(totals.cacheReadTokens)} ${t('cached')}`,
+        }),
+        h(StatCard, {
+          label: t('requests'),
+          value: f.plain(totals.requests),
+          unit: 'req.',
+          note: `${f.compact(totals.inputTokens)} in · ${f.compact(totals.outputTokens)} out`,
+        }),
+        balanceWallet !== null
+          ? h(StatCard, {
+              label: t('balance'),
+              value: String(balanceWallet.balance),
+              unit: balanceWallet.currency,
+              note: null,
+              children:
+                data.account.topUpUrl !== null
+                  ? h(
+                      'div',
+                      { className: 'ud_note' },
+                      h('a', { href: data.account.topUpUrl, target: '_blank', rel: 'noreferrer' }, t('topUp')),
+                      ` · ${originLabel}`,
+                    )
+                  : h('div', { className: 'ud_note' }, originLabel),
+            })
+          : h(StatCard, {
+              label: t('sessions'),
+              value: f.plain(data.sessionCount ?? 0),
+              unit: 'sessions',
+              note: `${cacheRate.toFixed(0)}% ${t('cached')}`,
+            }),
+      )
+
+      const chart = h(
+        'div',
+        { className: 'ud_panel' },
+        h(
+          'div',
+          { className: 'ud_panelHead' },
+          h('div', { className: 'ud_panelTitle' }, t('perDay')),
+          h('div', { className: 'ud_panelMeta' }, `${f.money(totals.cost, currency)} · ${rangeLabel}`),
+        ),
+        totals.requests === 0 ? h('div', { className: 'ud_empty' }, t('noData')) : h(DayChart, { days: data.byDay, currency, f, t }),
+      )
+
+      const split = h(
+        'div',
+        { className: 'ud_split' },
+        h(
+          'div',
+          { className: 'ud_panel' },
+          h('div', { className: 'ud_panelHead' }, h('div', { className: 'ud_panelTitle' }, t('perModel'))),
+          h(ModelRows, { models: data.byModel, currency, f, t }),
+        ),
+        h(
+          'div',
+          { className: 'ud_panel' },
+          h(
+            'div',
+            { className: 'ud_panelHead' },
+            h('div', { className: 'ud_panelTitle' }, t('recent')),
+            h('div', { className: 'ud_panelMeta' }, `${data.sessions.length}`),
+          ),
+          h(SessionRows, { sessions: data.sessions.slice(0, 8), currency, f, t }),
+        ),
+      )
+
+      return h(
+        'div',
+        { className: 'ud_page' },
+        h(
+          'div',
+          { className: 'ud_inner' },
+          head,
+          data.partial ? h('div', { className: 'ud_banner' }, t('partial')) : null,
+          cards,
+          chart,
+          split,
+        ),
+      )
+    }
+
+    function UsageIcon(props) {
+      const size = typeof props.size === 'number' && props.size > 0 ? props.size : 18
+      const active = props.active === true
+      return h(
+        'svg',
+        {
+          width: size,
+          height: size,
+          viewBox: '0 0 24 24',
+          fill: 'none',
+          'aria-hidden': true,
+          style: { display: 'block', color: active ? 'var(--dsw-alias-brand-primary)' : 'currentColor' },
+        },
+        h('path', { d: 'M4 20.5h16', stroke: 'currentColor', strokeWidth: 1.6, strokeLinecap: 'round', opacity: 0.5 }),
+        h('path', { d: 'M7.5 20V13', stroke: 'currentColor', strokeWidth: 2.6, strokeLinecap: 'round' }),
+        h('path', { d: 'M12 20V7', stroke: 'currentColor', strokeWidth: 2.6, strokeLinecap: 'round' }),
+        h('path', { d: 'M16.5 20v-5', stroke: 'currentColor', strokeWidth: 2.6, strokeLinecap: 'round' }),
+      )
+    }
+
+    /**
+     * Gauge glyph shared by the cost chips: the official icon, inlined from the
+     * shipped primitives (a plugin cannot import that package).
+     */
+    function TagIcon({ size = 13 }) {
+      return h(
+        'svg',
+        { width: size, height: size, viewBox: '0 0 16 16', fill: 'none', strokeWidth: 1, xmlns: 'http://www.w3.org/2000/svg', 'aria-hidden': true },
+        h('path', {
+          d: 'M3.4041 13.096C2.49514 12.187 1.87614 11.0288 1.62537 9.76798C1.37459 8.50716 1.50331 7.20028 1.99525 6.01261C2.48719 4.82494 3.32025 3.80981 4.3891 3.09557C5.45795 2.38134 6.71458 2.00008 8.0001 2C9.28563 2.00008 10.5423 2.38134 11.6111 3.09557C12.68 3.80981 13.513 4.82494 14.005 6.01261C14.4969 7.20028 14.6256 8.50716 14.3748 9.76798C14.1241 11.0288 13.5051 12.187 12.5961 13.096',
+          stroke: 'currentColor',
+        }),
+        h('path', { d: 'M8 8.49994L11.6114 4.88855', stroke: 'currentColor' }),
+        h('path', {
+          d: 'M8 9.75C8.69036 9.75 9.25 9.19036 9.25 8.5C9.25 7.80964 8.69036 7.25 8 7.25C7.30964 7.25 6.75 7.80964 6.75 8.5C6.75 9.19036 7.30964 9.75 8 9.75Z',
+          fill: 'currentColor',
+        }),
+      )
+    }
+
+    /**
+     * The Session's estimated cost in the composer footer, beside the shipped
+     * turn/step, token, and cache chips. It reads the same usage records those
+     * chips summarise, so only the price table makes it an estimate.
+     */
+    function SessionCostChip(props) {
+      const appTranslate = typeof props.t === 'function' ? props.t : undefined
+      const lang = useLang()
+      const f = useMemo(() => formatters(lang === 'auto' ? undefined : lang), [lang])
+      const usage = useTurnCosts(props.sessionId, 20000)
+      if (usage === null || typeof usage.cost !== 'number' || usage.requests === 0) return null
+      const title = `${translateWith(lang, appTranslate, 'costChipTitle')} · ${f.plain(usage.requests)} req.`
+      return h('span', { className: 'ud_footCost', title }, h(TagIcon, {}), h('span', {}, `≈ ${f.money(usage.cost, usage.currency)}`))
+    }
+
+    /**
+     * The cost of one finalized assistant message, in the row that already
+     * carries copy, feedback, and the shipped usage chip.
+     */
+    function MessageCostChip(props) {
+      const appTranslate = typeof props.t === 'function' ? props.t : undefined
+      const lang = useLang()
+      const f = useMemo(() => formatters(lang === 'auto' ? undefined : lang), [lang])
+      const usage = useTurnCosts(props.sessionId, 20000)
+      if (usage === null || props.messageId === undefined || props.messageId === null) return null
+      const entry = usage.byMessage[String(props.messageId)]
+      if (entry === undefined) return null
+      const title = `${translateWith(lang, appTranslate, 'messageCost')} · ${f.plain(entry.totalTokens)} tokens`
+      return h('span', { className: 'ud_actionChip', title }, h(TagIcon, { size: 12 }), h('span', {}, f.money(entry.cost, usage.currency)))
+    }
+
+    /** Sidebar-foot entry that opens the Usage page (wide row, rail icon). */
+    function SidebarUsageAction(props) {
+      const appTranslate = typeof props.t === 'function' ? props.t : undefined
+      const lang = useLang()
+      const wide = props.wide !== false
+      const label = translateWith(lang, appTranslate, 'panelTitle')
+      const open = typeof props.open === 'function' ? props.open : () => {}
+      const usePanelInfo = typeof props.usePanelInfo === 'function' ? props.usePanelInfo : null
+      const active = usePanelInfo === null ? false : usePanelInfo((info) => info.activePanelId === 'usage')
+      return h(
+        'button',
+        {
+          type: 'button',
+          className: wide ? 'ud_sideRow' : 'ud_sideIcon',
+          title: label,
+          'aria-label': label,
+          'aria-current': active ? 'page' : undefined,
+          onClick: open,
+        },
+        h(UsageIcon, { size: 16, active }),
+        wide ? h('span', { className: 'ud_sideLabel' }, label) : null,
+      )
+    }
+
+    /* ---------------------------------------------------------------- setup -- */
+
+    return {
+      inject: ['slots', 'locale', 'layout'],
+      apply(ctx) {
+        ensureStyles()
+        ctx.effect(() => ctx.locale.register(NS, { en, fr, zh }))
+
+        let appTranslate = (key) => en[key] ?? key
+        try {
+          const bound = ctx.locale.bind(NS)
+          if (typeof bound === 'function') appTranslate = (key) => bound(key)
+        } catch {}
+
+        ctx.effect(() => () => {
+          const tag = document.querySelector(`style[data-plugin-css="${tagId}"]`)
+          if (tag !== null) tag.remove()
+        })
+
+        ctx.slots.inject('main', () =>
+          ctx.slots.register({ name: 'main', key: 'usage', locale: NS }, UsagePage),
+        )
+
+        ctx.slots.inject('conversation.chat.assistant-actions', () =>
+          ctx.slots.register({ name: 'conversation.chat.assistant-actions', id: 'usage-message-cost', order: 20, locale: NS }, MessageCostChip),
+        )
+
+        ctx.slots.inject('conversation.composer.dock', () =>
+          ctx.slots.register({ name: 'conversation.composer.dock', id: 'cost', order: 5, locale: NS }, SessionCostChip),
+        )
+
+        // Foot seat: renders above the settings seat, i.e. at the very bottom
+        // of the column, beside the shipped foot controls.
+        ctx.slots.inject('sidebar.footer.action', () =>
+          ctx.slots.register(
+            {
+              name: 'sidebar.footer.action',
+              id: 'usage-footer',
+              order: 5,
+              locale: NS,
+              label: () => translateWith(langStore.value, appTranslate, 'panelTitle'),
+              inject: () => ({ open: () => ctx.layout.selectPanel('usage') }),
+            },
+            SidebarUsageAction,
+          ),
+        )
+      },
+    }
+  },
+})
