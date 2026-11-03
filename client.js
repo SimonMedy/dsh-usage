@@ -476,10 +476,10 @@ window.__ModuleLoader__.load({
 .ud_btn{appearance:none;border:1px solid var(--dsw-alias-border-l1);background:var(--dsw-alias-bg-layer-1);color:var(--dsw-alias-label-primary);font:inherit;font-size:12px;line-height:18px;padding:6px 12px;border-radius:9px;cursor:pointer}
 .ud_btn:hover{border-color:var(--dsw-alias-border-l2)}
 .ud_btn:disabled{opacity:.55;cursor:default}
-.ud_btnTiny{font-size:11px;line-height:16px;padding:3px 9px;border-radius:7px;text-decoration:none;display:inline-flex;align-items:center;gap:5px}
+.ud_btnTiny{font-size:12px;line-height:17px;padding:4px 11px;border-radius:8px;text-decoration:none;display:inline-flex;align-items:center;gap:5px}
 /* The high-contrast pair the theme ships for a fill that must stand out on a
    card: a light fill with dark text in the dark theme, and the reverse in light. */
-.ud_btnContrast{background:var(--dsw-alias-button-contrast-fill);color:var(--dsw-alias-label-primary-inverted);border-color:transparent;transition:opacity .12s ease}
+.ud_btnContrast{background:var(--dsw-alias-button-contrast-fill);color:var(--dsw-alias-label-primary-inverted);border-color:transparent;font-weight:500;transition:opacity .12s ease}
 .ud_btnContrast:hover{opacity:.86;border-color:transparent}
 .ud_btnContrast:focus-visible{outline:2px solid var(--dsw-alias-brand-primary);outline-offset:2px}
 .ud_balFoot{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:2px}
