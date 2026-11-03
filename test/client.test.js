@@ -61,6 +61,14 @@ test('the cost and balance cards share one shape: symbol on the amount, code as 
   for (const value of values) assert.ok(!value.includes('USD'), 'no code inside the big amount')
 })
 
+test('the top-up action uses the theme contrast button, not the card surface', () => {
+  const { nodes } = mountClient({ data: summary() }).render('main')
+  const link = nodes.find((node) => String(node.props.className).includes('ud_btnContrast'))
+  assert.ok(link !== undefined, 'the top-up link carries the contrast class')
+  assert.equal(link.type, 'a')
+  assert.ok(String(link.props.href).startsWith('https://'))
+})
+
 test('the chart stacks one segment per model, clipped to the bar outline', () => {
   const { nodes } = mountClient({ data: summary() }).render('main')
   const clipped = nodes.filter((node) => node.type === 'rect' && node.props.clipPath !== undefined)

@@ -477,6 +477,11 @@ window.__ModuleLoader__.load({
 .ud_btn:hover{border-color:var(--dsw-alias-border-l2)}
 .ud_btn:disabled{opacity:.55;cursor:default}
 .ud_btnTiny{font-size:11px;line-height:16px;padding:3px 9px;border-radius:7px;text-decoration:none;display:inline-flex;align-items:center;gap:5px}
+/* The high-contrast pair the theme ships for a fill that must stand out on a
+   card: a light fill with dark text in the dark theme, and the reverse in light. */
+.ud_btnContrast{background:var(--dsw-alias-button-contrast-fill);color:var(--dsw-alias-label-primary-inverted);border-color:transparent;transition:opacity .12s ease}
+.ud_btnContrast:hover{opacity:.86;border-color:transparent}
+.ud_btnContrast:focus-visible{outline:2px solid var(--dsw-alias-brand-primary);outline-offset:2px}
 .ud_balFoot{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:2px}
 .ud_balSource{font-size:11px;line-height:16px;color:var(--dsw-alias-label-secondary)}
 .ud_legend{display:flex;flex-wrap:wrap;gap:8px;margin-top:14px}
@@ -1357,7 +1362,7 @@ window.__ModuleLoader__.load({
                 'div',
                 { className: 'ud_balFoot' },
                 topUpUrl !== null
-                  ? h('a', { className: 'ud_btn ud_btnTiny', href: topUpUrl, target: '_blank', rel: 'noreferrer' }, t('topUp'))
+                  ? h('a', { className: 'ud_btn ud_btnTiny ud_btnContrast', href: topUpUrl, target: '_blank', rel: 'noreferrer' }, t('topUp'))
                   : null,
                 h('span', { className: 'ud_balSource' }, originLabel),
               ),
