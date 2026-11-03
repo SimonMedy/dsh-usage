@@ -440,11 +440,22 @@ window.__ModuleLoader__.load({
 .ud_btnTiny{font-size:11px;line-height:16px;padding:3px 9px;border-radius:7px;text-decoration:none;display:inline-flex;align-items:center;gap:5px}
 .ud_balFoot{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:2px}
 .ud_balSource{font-size:11px;line-height:16px;color:var(--dsw-alias-label-secondary)}
-.ud_legend{display:flex;flex-wrap:wrap;gap:8px 18px;margin-top:12px}
-.ud_legendItem{display:inline-flex;align-items:center;gap:7px;font-size:11.5px;line-height:17px;color:var(--dsw-alias-label-secondary)}
-.ud_swatch{width:8px;height:8px;border-radius:2px;flex:none}
+.ud_legend{display:flex;flex-wrap:wrap;gap:8px;margin-top:14px}
+.ud_legendItem{display:inline-flex;align-items:center;gap:7px;border:1px solid var(--dsw-alias-border-l1);background:0 0;border-radius:8px;padding:2px 9px;margin:0;font:inherit;font-size:11.5px;line-height:18px;color:var(--dsw-alias-label-secondary);cursor:pointer;transition:background .12s ease,border-color .12s ease,opacity .12s ease}
+.ud_legendItem:hover{border-color:var(--dsw-alias-border-l2);background:var(--dsw-alias-interactive-bg-hover)}
+.ud_legendItem:focus-visible{outline:2px solid var(--dsw-alias-brand-primary);outline-offset:1px}
+.ud_legendItem[aria-pressed="false"]{opacity:.5;border-color:transparent}
+.ud_legendItem[aria-pressed="false"]:hover{opacity:.75}
+.ud_legendItem[aria-pressed="false"] .ud_legendLabel{text-decoration:line-through}
+.ud_legendItem[aria-pressed="false"] .ud_swatch{opacity:.35}
+.ud_swatch{width:8px;height:8px;border-radius:2px;flex:none;transition:opacity .12s ease}
 .ud_legendLabel{color:var(--dsw-alias-label-primary)}
 .ud_legendShare{font-variant-numeric:tabular-nums}
+.ud_chartWrap{position:relative}
+.ud_tip{position:absolute;z-index:5;transform:translate(-50%,calc(-100% - 10px));pointer-events:none;min-width:196px;max-width:280px;padding:10px 12px;border-radius:var(--dsw-radius-md);background:var(--dsw-specific-menu);backdrop-filter:var(--dsw-menu-backdrop-filter);--dsw-elevation-stroke-color:var(--dsw-alias-border-l1);box-shadow:var(--dsw-elevation-prominent);color:var(--dsw-alias-label-secondary);font-size:12px;line-height:18px}
+.ud_tipHead{display:flex;justify-content:space-between;gap:16px;margin-bottom:6px;color:var(--dsw-alias-label-primary);font-weight:500;font-variant-numeric:tabular-nums}
+.ud_tipRow{display:grid;grid-template-columns:8px minmax(0,1fr) auto;align-items:center;gap:8px;padding:1px 0}
+.ud_tipRow b{color:var(--dsw-alias-label-secondary);font-weight:400;text-align:right;font-variant-numeric:tabular-nums}
 .ud_select{appearance:none;border:1px solid var(--dsw-alias-border-l1);background:var(--dsw-alias-bg-layer-1);color:var(--dsw-alias-label-primary);font:inherit;font-size:12px;line-height:18px;padding:6px 10px;border-radius:9px;cursor:pointer}
 .ud_picker{position:relative;flex:none}
 .ud_field{display:inline-flex;align-items:center;gap:7px;max-width:230px;height:32px;box-sizing:border-box;appearance:none;border:1px solid var(--dsw-alias-border-l1);background:var(--dsw-alias-bg-layer-1);color:var(--dsw-alias-label-primary);font:inherit;font-size:12px;line-height:18px;padding:0 10px;border-radius:10px;cursor:pointer}
@@ -724,6 +735,7 @@ window.__ModuleLoader__.load({
      * brand-coloured segment.
      */
     function DayChart({ days, models, currency, f, t }) {
+      const [hover, setHover] = useState(null)
       const width = 760
       const height = 190
       const padTop = 10
@@ -744,7 +756,7 @@ window.__ModuleLoader__.load({
       /** The cost one day attributes to one legend entry. */
       const segmentCost = (day, entry) => {
         const parts = day.models
-        if (!Array.isArray(parts) || parts.length === 0) return entry.index === 0 && entry.color === null ? day.cost : 0
+        if (!Array.isArray(parts) || parts.length === 0) return entry.color === null ? day.cost : 0
         if (entry.others === true) {
           const known = new Set(models.filter((model) => model.others !== true).map((model) => model.key))
           return parts.reduce((sum, part) => (known.has(part.model) ? sum : sum + part.cost), 0)
@@ -753,34 +765,54 @@ window.__ModuleLoader__.load({
         return found === undefined ? 0 : found.cost
       }
 
+      /** Visible segments of one day, largest first, ignoring empty slices. */
+      const daySegments = (day) =>
+        models
+          .map((entry) => ({ entry, value: segmentCost(day, entry) }))
+          .filter((segment) => segment.value > 0)
+
       counts.forEach((day, index) => {
         if (day.cost <= 0) return
         const x = step * index + (step - barWidth) / 2
+        const segments = daySegments(day)
+        const stacked = segments.length === 0 ? [] : segments
         let bottom = padTop + innerHeight
-        const stacked = models.length > 0 && Array.isArray(day.models) && day.models.length > 0 ? models : [{ key: '__all', label: '', color: null, index: 0 }]
-        stacked.forEach((entry, entryIndex) => {
-          const value = segmentCost(day, { ...entry, index: entryIndex })
-          if (value <= 0) return
-          const segmentHeight = Math.max(1, (value / scale) * innerHeight)
+        stacked.forEach((segment, segmentIndex) => {
+          const segmentHeight = Math.max(1, (segment.value / scale) * innerHeight)
           bottom -= segmentHeight
-          const isTop = entryIndex === stacked.length - 1
+          const isTop = segmentIndex === stacked.length - 1
           elements.push(
-            h(
-              'rect',
-              {
-                key: `${day.date}-${entry.key}`,
-                x,
-                y: bottom,
-                width: barWidth,
-                height: segmentHeight,
-                rx: isTop ? Math.min(3, barWidth / 2) : 0,
-                fill: entry.color === null ? undefined : entry.color,
-                className: entry.color === null ? 'ud_bar' : undefined,
-              },
-              h('title', {}, `${shortDate(day.date, f.locale)} · ${entry.label === '' ? '' : `${entry.label} · `}${f.money(value, currency)}`),
-            ),
+            h('rect', {
+              key: `${day.date}-${segment.entry.key}`,
+              x,
+              y: bottom,
+              width: barWidth,
+              height: segmentHeight,
+              rx: isTop ? Math.min(3, barWidth / 2) : 0,
+              fill: segment.entry.color === null ? undefined : segment.entry.color,
+              className: segment.entry.color === null ? 'ud_bar' : undefined,
+            }),
           )
         })
+        // One invisible hit area per column: hovering anywhere in it opens the
+        // breakdown, which is how the platform's chart behaves.
+        elements.push(
+          h('rect', {
+            key: `hit-${day.date}`,
+            x: step * index,
+            y: padTop,
+            width: step,
+            height: innerHeight,
+            fill: 'transparent',
+            onMouseEnter: () =>
+              setHover({
+                index,
+                left: ((step * index + step / 2) / width) * 100,
+                top: ((padTop + innerHeight - Math.max(2, (day.cost / scale) * innerHeight)) / height) * 100,
+              }),
+            onMouseLeave: () => setHover(null),
+          }),
+        )
       })
 
       const labelStep = Math.max(1, Math.ceil(counts.length / 6))
@@ -792,15 +824,43 @@ window.__ModuleLoader__.load({
         )
       })
 
+      const hoveredDay = hover === null ? null : counts[hover.index]
+      const hoveredSegments = hoveredDay === undefined || hoveredDay === null ? [] : daySegments(hoveredDay)
+      const hoveredCost = hoveredSegments.reduce((sum, segment) => sum + segment.value, 0)
+
       return h(
-        'svg',
-        { className: 'ud_chart', viewBox: `0 0 ${width} ${height}`, role: 'img', 'aria-label': t('perDay') },
-        elements,
+        'div',
+        { className: 'ud_chartWrap' },
+        h('svg', { className: 'ud_chart', viewBox: `0 0 ${width} ${height}`, role: 'img', 'aria-label': t('perDay') }, elements),
+        hoveredDay === null || hoveredDay === undefined || hoveredCost <= 0
+          ? null
+          : h(
+              'div',
+              { className: 'ud_tip', style: { left: `clamp(112px, ${hover.left}%, calc(100% - 112px))`, top: `max(96px, ${hover.top}%)` }, role: 'status' },
+              h(
+                'div',
+                { className: 'ud_tipHead' },
+                h('span', {}, shortDate(hoveredDay.date, f.locale)),
+                h('span', {}, f.money(hoveredCost, currency)),
+              ),
+              hoveredSegments.map((segment) =>
+                h(
+                  'div',
+                  { className: 'ud_tipRow', key: segment.entry.key },
+                  h('span', { className: 'ud_swatch', style: { background: segment.entry.color ?? 'var(--dsw-alias-brand-primary)' } }),
+                  h('span', { className: 'ud_legendLabel' }, segment.entry.label),
+                  h('b', {}, f.money(segment.value, currency)),
+                ),
+              ),
+            ),
       )
     }
 
-    /** Colour key and share, mirroring the platform's stacked charts. */
-    function ChartLegend({ models, total, f, t }) {
+    /**
+     * Colour key and share, mirroring the platform's stacked charts. Each entry
+     * is a toggle: pressing it hides that model from the chart.
+     */
+    function ChartLegend({ models, hidden, onToggle, total, f, t }) {
       if (models.length === 0) return null
       const base = total > 0 ? total : 1
       return h(
@@ -808,8 +868,15 @@ window.__ModuleLoader__.load({
         { className: 'ud_legend' },
         models.map((model) =>
           h(
-            'div',
-            { className: 'ud_legendItem', key: model.key },
+            'button',
+            {
+              type: 'button',
+              className: 'ud_legendItem',
+              key: model.key,
+              'aria-pressed': hidden[model.key] !== true,
+              title: model.label,
+              onClick: () => onToggle(model.key),
+            },
             h('span', { className: 'ud_swatch', style: { background: model.color } }),
             h('span', { className: 'ud_legendLabel' }, model.label),
             h('span', { className: 'ud_legendShare' }, `${((model.cost / base) * 100).toFixed(1)} %`),
@@ -1092,6 +1159,13 @@ window.__ModuleLoader__.load({
         }
         return head
       }, [data, lang])
+      // Legend toggles: a hidden model leaves the chart, not the page totals,
+      // because those are aggregated by the Host over every Session.
+      const [hiddenModels, setHiddenModels] = useState({})
+      const toggleModel = useCallback((key) => {
+        setHiddenModels((current) => ({ ...current, [key]: current[key] !== true }))
+      }, [])
+      const visibleModels = chartModels.filter((model) => hiddenModels[model.key] !== true)
 
       const head = h(
         'div',
@@ -1232,8 +1306,8 @@ window.__ModuleLoader__.load({
         totals.requests === 0
           ? h('div', { className: 'ud_empty' }, t('noData'))
           : [
-              h(DayChart, { key: 'chart', days: data.byDay, models: chartModels, currency, f, t }),
-              h(ChartLegend, { key: 'legend', models: chartModels, total: totals.cost, f, t }),
+              h(DayChart, { key: 'chart', days: data.byDay, models: visibleModels, currency, f, t }),
+              h(ChartLegend, { key: 'legend', models: chartModels, hidden: hiddenModels, onToggle: toggleModel, total: totals.cost, f, t }),
             ],
       )
 
