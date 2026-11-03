@@ -765,32 +765,43 @@ window.__ModuleLoader__.load({
         return found === undefined ? 0 : found.cost
       }
 
-      /** Visible segments of one day, largest first, ignoring empty slices. */
-      const daySegments = (day) =>
-        models
+      /** Visible segments of one day; the whole bar when the Host sent no split. */
+      const daySegments = (day) => {
+        if (!Array.isArray(day.models) || day.models.length === 0) {
+          return day.cost > 0 ? [{ entry: { key: '__all', label: '', color: null }, value: day.cost }] : []
+        }
+        return models
           .map((entry) => ({ entry, value: segmentCost(day, entry) }))
           .filter((segment) => segment.value > 0)
+      }
 
+      const defs = []
       counts.forEach((day, index) => {
-        if (day.cost <= 0) return
-        const x = step * index + (step - barWidth) / 2
         const segments = daySegments(day)
-        const stacked = segments.length === 0 ? [] : segments
+        const total = segments.reduce((sum, segment) => sum + segment.value, 0)
+        if (total <= 0) return
+        const x = step * index + (step - barWidth) / 2
+        const barHeight = (total / scale) * innerHeight
+        const barTop = padTop + innerHeight - barHeight
+        // One rounded outline for the whole stack, so a 2px top segment is
+        // clipped by the bar's shape instead of becoming a floating pill.
+        const clipId = `udclip-${index}`
+        const radius = Math.min(3, barWidth / 2)
+        defs.push(h('clipPath', { key: clipId, id: clipId }, h('rect', { x, y: barTop, width: barWidth, height: barHeight, rx: radius })))
         let bottom = padTop + innerHeight
-        stacked.forEach((segment, segmentIndex) => {
-          const segmentHeight = Math.max(1, (segment.value / scale) * innerHeight)
+        segments.forEach((segment) => {
+          const segmentHeight = (segment.value / scale) * innerHeight
           bottom -= segmentHeight
-          const isTop = segmentIndex === stacked.length - 1
           elements.push(
             h('rect', {
               key: `${day.date}-${segment.entry.key}`,
               x,
               y: bottom,
               width: barWidth,
-              height: segmentHeight,
-              rx: isTop ? Math.min(3, barWidth / 2) : 0,
+              height: Math.max(0.5, segmentHeight),
               fill: segment.entry.color === null ? undefined : segment.entry.color,
               className: segment.entry.color === null ? 'ud_bar' : undefined,
+              clipPath: `url(#${clipId})`,
             }),
           )
         })
@@ -808,7 +819,7 @@ window.__ModuleLoader__.load({
               setHover({
                 index,
                 left: ((step * index + step / 2) / width) * 100,
-                top: ((padTop + innerHeight - Math.max(2, (day.cost / scale) * innerHeight)) / height) * 100,
+                top: ((barTop + 2) / height) * 100,
               }),
             onMouseLeave: () => setHover(null),
           }),
@@ -831,7 +842,10 @@ window.__ModuleLoader__.load({
       return h(
         'div',
         { className: 'ud_chartWrap' },
-        h('svg', { className: 'ud_chart', viewBox: `0 0 ${width} ${height}`, role: 'img', 'aria-label': t('perDay') }, elements),
+        h('svg', { className: 'ud_chart', viewBox: `0 0 ${width} ${height}`, role: 'img', 'aria-label': t('perDay') }, [
+          h('defs', { key: 'defs' }, defs),
+          ...elements,
+        ]),
         hoveredDay === null || hoveredDay === undefined || hoveredCost <= 0
           ? null
           : h(
