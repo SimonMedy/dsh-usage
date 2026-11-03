@@ -327,7 +327,13 @@ function foldSession(header, events, config) {
         cost,
         requests: 1,
         turn: Number.isSafeInteger(turn) && turn >= 0 ? turn : 0,
+        model,
+        inputTokens: tokens.inputTokens,
+        cacheReadTokens: tokens.cacheReadTokens,
+        cacheWriteTokens: tokens.cacheWriteTokens,
+        outputTokens: tokens.outputTokens,
         totalTokens: tokens.inputTokens + tokens.cacheReadTokens + tokens.cacheWriteTokens + tokens.outputTokens,
+        costByKind: { input: parts.input, cacheRead: parts.cacheRead, cacheWrite: parts.cacheWrite, output: parts.output },
       }
     }
 

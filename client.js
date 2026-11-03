@@ -490,7 +490,7 @@ window.__ModuleLoader__.load({
 .ud_empty{padding:26px 0;text-align:center;color:var(--dsw-alias-label-secondary);font-size:13px}
 .ud_banner{font-size:12px;line-height:18px;color:var(--dsw-alias-label-secondary);background:var(--dsw-alias-bg-layer-2);border:1px solid var(--dsw-alias-border-l1);border-radius:10px;padding:8px 12px}
 .ud_error{color:var(--dsw-alias-state-error-primary)}
-.ud_actionChip{box-sizing:border-box;min-width:0;height:calc(28px + var(--dsh-content-font-delta,0px));border-radius:var(--dsw-radius-sm);color:var(--dsw-alias-label-tertiary);font-size:calc(var(--dsh-content-font-size-secondary,13px) - 1px);font-variant-numeric:tabular-nums;line-height:calc(24px + var(--dsh-content-font-delta,0px));white-space:nowrap;border:none;background:0 0;align-items:center;gap:4px;padding:6px 8px;display:inline-flex;order:2;align-self:center;cursor:default}
+.ud_actionChip{box-sizing:border-box;min-width:0;height:calc(28px + var(--dsh-content-font-delta,0px));border-radius:var(--dsw-radius-sm);color:var(--dsw-alias-label-tertiary);font-family:inherit;font-size:calc(var(--dsh-content-font-size-secondary,13px) - 1px);font-variant-numeric:tabular-nums;line-height:calc(24px + var(--dsh-content-font-delta,0px));white-space:nowrap;border:none;background:0 0;align-items:center;gap:4px;padding:6px 8px;display:inline-flex;order:2;align-self:center;cursor:pointer}
 .ud_actionChip:hover{background:var(--dsw-alias-interactive-bg-hover)}
 .ud_actionChip svg{width:calc(15px + var(--dsh-content-font-delta,0px));height:calc(15px + var(--dsh-content-font-delta,0px));flex:none}
 /* The row keeps usage and the clock inside one inline-flex span, which a slot
@@ -516,6 +516,7 @@ window.__ModuleLoader__.load({
 .ud_popHead{display:flex;justify-content:space-between;gap:16px;margin-bottom:8px;color:var(--dsw-alias-label-primary);font-weight:500;font-variant-numeric:tabular-nums}
 .ud_popTitle{display:inline-flex;align-items:center;gap:6px;min-width:0}
 .ud_popTitle svg{width:14px;height:14px;flex:none}
+.ud_popSub{margin:-4px 0 8px;color:var(--dsw-alias-label-tertiary);font-size:11px;line-height:16px}
 .ud_popRule{border-top:.5px solid var(--dsw-alias-border-l2);margin-bottom:10px}
 .ud_popRow{display:grid;grid-template-columns:minmax(76px,auto) minmax(0,1fr) auto;gap:6px 16px;align-items:baseline;padding:1px 0;color:var(--dsw-alias-label-tertiary)}
 .ud_popRow b{color:var(--dsw-alias-label-secondary);font-weight:400;font-variant-numeric:tabular-nums;text-align:right}
@@ -1232,6 +1233,120 @@ window.__ModuleLoader__.load({
     }
 
     /**
+     * One open cost panel at a time: opening a second chip closes the first
+     * instead of stacking dialogs.
+     */
+    const openPanel = { value: null, listeners: new Set() }
+
+    function setOpenPanel(next) {
+      openPanel.value = next
+      for (const listener of openPanel.listeners) listener()
+    }
+
+    /** Anchor state for one chip, mirrored from the shared open-panel store. */
+    function useOpenPanel(key) {
+      const [anchor, setAnchor] = useState(() => (openPanel.value !== null && openPanel.value.key === key ? openPanel.value.anchor : null))
+      useEffect(() => {
+        const listener = () => {
+          const value = openPanel.value
+          setAnchor(value !== null && value.key === key ? value.anchor : null)
+        }
+        openPanel.listeners.add(listener)
+        return () => {
+          openPanel.listeners.delete(listener)
+        }
+      }, [key])
+      const open = useCallback((rect) => setOpenPanel({ key, anchor: { left: rect.left, top: rect.top } }), [key])
+      const close = useCallback(() => setOpenPanel(null), [])
+      return [anchor, open, close]
+    }
+
+    /** Dismiss the open panel on an outside click, Escape, or a resize. */
+    function usePanelDismiss(anchor, close, buttonRef, panelRef) {
+      useEffect(() => {
+        if (anchor === null) return undefined
+        const onDown = (event) => {
+          if (buttonRef.current !== null && buttonRef.current.contains(event.target)) return
+          if (panelRef.current !== null && panelRef.current.contains(event.target)) return
+          close()
+        }
+        const onKey = (event) => {
+          if (event.key === 'Escape') close()
+        }
+        const onViewport = () => close()
+        document.addEventListener('mousedown', onDown)
+        document.addEventListener('keydown', onKey)
+        window.addEventListener('resize', onViewport)
+        return () => {
+          document.removeEventListener('mousedown', onDown)
+          document.removeEventListener('keydown', onKey)
+          window.removeEventListener('resize', onViewport)
+        }
+      }, [anchor, close, buttonRef, panelRef])
+    }
+
+    /** Rows shared by both panels: one per token kind, with its billed cost. */
+    function costRows(kinds, usage, t) {
+      if (kinds === null || kinds === undefined) return []
+      const rows = [
+        { key: 'input', label: t('rowInput'), tokens: usage.inputTokens, cost: kinds.input },
+        { key: 'cacheRead', label: t('rowCacheRead'), tokens: usage.cacheReadTokens, cost: kinds.cacheRead },
+      ]
+      if (kinds.cacheWrite > 0) rows.push({ key: 'cacheWrite', label: t('rowCacheWrite'), tokens: usage.cacheWriteTokens, cost: kinds.cacheWrite })
+      rows.push({ key: 'output', label: t('rowOutput'), tokens: usage.outputTokens, cost: kinds.output })
+      return rows
+    }
+
+    /** The shared breakdown dialog, anchored above the chip that opened it. */
+    function CostPopover({ anchor, title, subtitle, currency, total, rows, models, f, t, panelRef }) {
+      return h(
+        'div',
+        {
+          ref: panelRef,
+          className: 'ud_pop',
+          role: 'dialog',
+          'aria-label': title,
+          style: {
+            left: `${Math.max(12, Math.min(anchor.left, window.innerWidth - 456))}px`,
+            bottom: `${Math.max(12, window.innerHeight - anchor.top + 8)}px`,
+          },
+        },
+        h(
+          'div',
+          { className: 'ud_popHead' },
+          h('span', { className: 'ud_popTitle' }, h(TagIcon, { size: 14 }), h('span', {}, title)),
+          h('span', {}, f.money(total, currency)),
+        ),
+        subtitle === null || subtitle === undefined ? null : h('div', { className: 'ud_popSub' }, subtitle),
+        h('div', { className: 'ud_popRule' }),
+        rows.map((row) =>
+          h(
+            'div',
+            { className: 'ud_popRow', key: row.key },
+            h('span', {}, row.label),
+            h('span', { className: 'ud_popMeta' }, f.compact(row.tokens)),
+            h('b', {}, f.money(row.cost ?? 0, currency)),
+          ),
+        ),
+        models.length === 0
+          ? null
+          : [
+              h('div', { className: 'ud_popSection', key: 'section' }, t('perModel')),
+              ...models.map((entry) =>
+                h(
+                  'div',
+                  { className: 'ud_popRow', key: entry.model },
+                  h('span', {}, entry.model),
+                  h('span', { className: 'ud_popMeta' }, `${f.plain(entry.requests)} req.`),
+                  h('b', {}, f.money(entry.cost, currency)),
+                ),
+              ),
+            ],
+        h('div', { className: 'ud_popNote' }, t('costNote')),
+      )
+    }
+
+    /**
      * The Session's estimated cost in the composer footer, beside the shipped
      * turn/step, token, and cache chips. Clicking it opens the breakdown: cost
      * per token kind and per model, over the same usage records the neighbours
@@ -1241,129 +1356,120 @@ window.__ModuleLoader__.load({
       const lang = useLang()
       const f = useMemo(() => formatters(lang), [lang])
       const usage = useTurnCosts(props.sessionId, 20000)
-      const [anchor, setAnchor] = useState(null)
+      const [anchor, open, close] = useOpenPanel('session')
       const buttonRef = useRef(null)
       const panelRef = useRef(null)
-
-      useEffect(() => {
-        if (anchor === null) return undefined
-        const onDown = (event) => {
-          if (buttonRef.current !== null && buttonRef.current.contains(event.target)) return
-          if (panelRef.current !== null && panelRef.current.contains(event.target)) return
-          setAnchor(null)
-        }
-        const onKey = (event) => {
-          if (event.key === 'Escape') setAnchor(null)
-        }
-        const onViewport = () => setAnchor(null)
-        document.addEventListener('mousedown', onDown)
-        document.addEventListener('keydown', onKey)
-        window.addEventListener('resize', onViewport)
-        return () => {
-          document.removeEventListener('mousedown', onDown)
-          document.removeEventListener('keydown', onKey)
-          window.removeEventListener('resize', onViewport)
-        }
-      }, [anchor])
+      usePanelDismiss(anchor, close, buttonRef, panelRef)
 
       if (usage === null || typeof usage.cost !== 'number' || usage.requests === 0) return null
 
-      const toggle = () => {
+      const tr = (key) => translate(lang, key)
+      const openAt = () => {
         if (anchor !== null) {
-          setAnchor(null)
+          close()
           return
         }
         const rect = buttonRef.current === null ? undefined : buttonRef.current.getBoundingClientRect()
-        if (rect === undefined) return
-        setAnchor({ left: rect.left, top: rect.top })
+        if (rect !== undefined) open(rect)
       }
-
-      const title = `${translate(lang, 'costChipTitle')} · ${f.plain(usage.requests)} req.`
       const button = h(
         'button',
         {
           ref: buttonRef,
           type: 'button',
           className: 'ud_footCost',
-          title,
+          title: `${tr('costChipTitle')} · ${f.plain(usage.requests)} req.`,
           'aria-haspopup': 'dialog',
           'aria-expanded': anchor !== null,
-          onClick: toggle,
+          onClick: openAt,
         },
         h(TagIcon, {}),
         h('span', {}, `≈ ${f.money(usage.cost, usage.currency)}`),
       )
       if (anchor === null) return button
 
-      const kinds = usage.costByKind
       const models = Array.isArray(usage.byModel) ? usage.byModel.filter((entry) => entry.requests > 0).slice(0, 4) : []
-      const row = (key, label, tokens, cost) =>
-        h(
-          'div',
-          { className: 'ud_popRow', key },
-          h('span', {}, label),
-          h('span', { className: 'ud_popMeta' }, f.compact(tokens)),
-          h('b', {}, f.money(cost ?? 0, usage.currency)),
-        )
-
-      const panel = h(
-        'div',
-        {
-          ref: panelRef,
-          className: 'ud_pop',
-          role: 'dialog',
-          'aria-label': translate(lang, 'costDetails'),
-          style: {
-            left: `${Math.max(12, Math.min(anchor.left, window.innerWidth - 456))}px`,
-            bottom: `${Math.max(12, window.innerHeight - anchor.top + 8)}px`,
-          },
-        },
-        h(
-          'div',
-          { className: 'ud_popHead' },
-          h('span', { className: 'ud_popTitle' }, h(TagIcon, { size: 14 }), h('span', {}, translate(lang, 'costDetails'))),
-          h('span', {}, f.money(usage.cost, usage.currency)),
-        ),
-        h('div', { className: 'ud_popRule' }),
-        kinds === null || kinds === undefined ? null : [
-          row('input', translate(lang, 'rowInput'), usage.inputTokens, kinds.input),
-          row('cacheRead', translate(lang, 'rowCacheRead'), usage.cacheReadTokens, kinds.cacheRead),
-          kinds.cacheWrite > 0 ? row('cacheWrite', translate(lang, 'rowCacheWrite'), usage.cacheWriteTokens, kinds.cacheWrite) : null,
-          row('output', translate(lang, 'rowOutput'), usage.outputTokens, kinds.output),
-        ],
-        models.length === 0
-          ? null
-          : [
-              h('div', { className: 'ud_popSection', key: 'section' }, translate(lang, 'perModel')),
-              ...models.map((entry) =>
-                h(
-                  'div',
-                  { className: 'ud_popRow', key: entry.model },
-                  h('span', {}, entry.model),
-                  h('span', { className: 'ud_popMeta' }, `${f.plain(entry.requests)} req.`),
-                  h('b', {}, f.money(entry.cost, usage.currency)),
-                ),
-              ),
-            ],
-        h('div', { className: 'ud_popNote' }, translate(lang, 'costNote')),
+      return h(
+        React.Fragment,
+        null,
+        button,
+        h(CostPopover, {
+          anchor,
+          title: tr('costDetails'),
+          subtitle: null,
+          currency: usage.currency,
+          total: usage.cost,
+          rows: costRows(usage.costByKind, usage, tr),
+          models,
+          f,
+          t: tr,
+          panelRef,
+        }),
       )
-      return h(React.Fragment, null, button, panel)
     }
 
     /**
      * The cost of one finalized assistant message, in the row that already
-     * carries copy, feedback, and the shipped usage chip.
+     * carries copy, feedback, and the shipped usage chip. Clicking it opens the
+     * same breakdown for that single request.
      */
     function MessageCostChip(props) {
       const lang = useLang()
       const f = useMemo(() => formatters(lang), [lang])
       // One read per message, retried until its own usage record lands.
       const usage = useTurnCosts(props.sessionId, 0, props.messageId ?? null)
+      const messageKey = props.messageId === undefined || props.messageId === null ? 'message:none' : `message:${props.messageId}`
+      const [anchor, open, close] = useOpenPanel(messageKey)
+      const buttonRef = useRef(null)
+      const panelRef = useRef(null)
+      usePanelDismiss(anchor, close, buttonRef, panelRef)
+
       if (usage === null || props.messageId === undefined || props.messageId === null) return null
       const entry = usage.byMessage[String(props.messageId)]
       if (entry === undefined) return null
-      const title = `${translate(lang, 'messageCost')} · ${f.plain(entry.totalTokens)} tokens`
-      return h('span', { className: 'ud_actionChip', title }, h(TagIcon, { size: 12 }), h('span', {}, f.money(entry.cost, usage.currency)))
+
+      const tr = (key) => translate(lang, key)
+      const openAt = () => {
+        if (anchor !== null) {
+          close()
+          return
+        }
+        const rect = buttonRef.current === null ? undefined : buttonRef.current.getBoundingClientRect()
+        if (rect !== undefined) open(rect)
+      }
+      const button = h(
+        'button',
+        {
+          ref: buttonRef,
+          type: 'button',
+          className: 'ud_actionChip',
+          title: `${tr('messageCost')} · ${f.plain(entry.totalTokens)} tokens`,
+          'aria-haspopup': 'dialog',
+          'aria-expanded': anchor !== null,
+          onClick: openAt,
+        },
+        h(TagIcon, { size: 12 }),
+        h('span', {}, f.money(entry.cost, usage.currency)),
+      )
+      if (anchor === null) return button
+
+      return h(
+        React.Fragment,
+        null,
+        button,
+        h(CostPopover, {
+          anchor,
+          title: tr('costDetails'),
+          subtitle: entry.model,
+          currency: usage.currency,
+          total: entry.cost,
+          rows: costRows(entry.costByKind, entry, tr),
+          models: [],
+          f,
+          t: tr,
+          panelRef,
+        }),
+      )
     }
 
     /** Sidebar-foot entry that opens the Usage page (wide row, rail icon). */
