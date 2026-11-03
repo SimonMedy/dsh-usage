@@ -519,7 +519,7 @@ window.__ModuleLoader__.load({
 .ud_popHead{display:flex;justify-content:space-between;gap:16px;margin-bottom:8px;color:var(--dsw-alias-label-primary);font-weight:500;font-variant-numeric:tabular-nums}
 .ud_popTitle{display:inline-flex;align-items:center;gap:6px;min-width:0}
 .ud_popTitle svg{width:14px;height:14px;flex:none}
-.ud_popRowWide{grid-template-columns:minmax(76px,auto) minmax(0,1fr)}
+.ud_popRow.ud_popRowWide{grid-template-columns:minmax(76px,auto) minmax(0,1fr)}
 .ud_popValue{color:var(--dsw-alias-label-secondary);text-align:right;overflow-wrap:anywhere}
 .ud_popRule{border-top:.5px solid var(--dsw-alias-border-l2);margin-bottom:10px}
 .ud_popRow{display:grid;grid-template-columns:minmax(76px,auto) minmax(0,1fr) auto;gap:6px 16px;align-items:baseline;padding:1px 0;color:var(--dsw-alias-label-tertiary)}
@@ -673,7 +673,9 @@ window.__ModuleLoader__.load({
           })
         }
         const cached = turnCache.get(id)
-        if (cached !== undefined && complete(cached) && Date.now() - cached.at < (refreshMs > 0 ? 12000 : 30000)) {
+        // The freshness window follows the caller's interval, so a chip that
+        // polls faster than the default actually sees fresh numbers.
+        if (cached !== undefined && complete(cached) && Date.now() - cached.at < (refreshMs > 0 ? refreshMs : 30000)) {
           setEntry(cached)
         } else {
           attempt()
@@ -1366,7 +1368,7 @@ window.__ModuleLoader__.load({
     function SessionCostChip(props) {
       const lang = useLang()
       const f = useMemo(() => formatters(lang), [lang])
-      const usage = useTurnCosts(props.sessionId, 20000)
+      const usage = useTurnCosts(props.sessionId, 5000)
       const [anchor, open, close] = useOpenPanel('session')
       const buttonRef = useRef(null)
       const panelRef = useRef(null)
