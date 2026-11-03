@@ -145,7 +145,7 @@ window.__ModuleLoader__.load({
     }
 
     const DICTS = { en, fr, zh }
-    const LANG_KEY = 'dsh-usage-dashboard.lang'
+    const LANG_KEY = 'dsh-usage.lang'
 
     /** The stored plugin language: 'auto' follows the application locale. */
     function readStoredLang() {
@@ -198,7 +198,7 @@ window.__ModuleLoader__.load({
 
     /* --------------------------------------------------------------- ranges -- */
 
-    const RANGE_KEY = 'dsh-usage-dashboard.range'
+    const RANGE_KEY = 'dsh-usage.range'
     const PRESETS = ['today', 'yesterday', 'last7', 'last30', 'thisMonth', 'lastMonth', 'custom']
     const RANGE_LABEL = {
       today: 'rangeToday',
