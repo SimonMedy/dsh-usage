@@ -18,7 +18,7 @@ No build step, no runtime dependency, no network access except the optional bala
 - **Session cost** in the composer footer, beside the turn/step and token counters.
 - **Time ranges**: today, yesterday, last 7 days, last 30 days, this month, last month, custom
   (with a calendar picker).
-- **Language**: follow the app, or force English / French / Chinese for the page — persisted.
+- **Language**: English, French or Chinese for the whole plugin UI — persisted, English by default.
 
 ## Requirements
 
@@ -29,7 +29,7 @@ No build step, no runtime dependency, no network access except the optional bala
 
 ## Install
 
-### From a clone (works today, no registry needed)
+### From a clone
 
 ```bash
 git clone https://github.com/<you>/dsh-usage.git
@@ -78,6 +78,14 @@ A single number applies to both tariffs (`cacheMiss: 0.15`). A model that matche
 with the fallback grid and marked `default price` in the per-model table, so an extrapolated figure
 is never silently presented as a real one.
 
+### Future models
+
+Pricing is resolved per request, from the model recorded in the event, so a model that did not exist
+when this plugin shipped never breaks the page: names containing `pro` use the v4-pro row, names
+containing `flash` the flash row, anything else falls back to the flash grid and is tagged
+**default price** until you add its row to `prices`. The tag disappears as soon as a request matches
+an entry.
+
 ## How the cost is computed
 
 Every `assistant/message` event in a Session log carries the provider `usage` record — cached input,
@@ -101,6 +109,14 @@ replaced by the Session count, so the page always renders.
 The tariff drop between two balance samples (recorded at most every three hours, kept in
 `~/.dsh/storages/usage-dashboard/balance.json`) is shown as money actually billed — the only figure
 on the page that is not an estimate.
+
+## Privacy
+
+Everything is computed locally: the Host reads the Session logs under `~/.dsh/sessions` and never
+uploads them. The only outbound request is the optional balance lookup to `api.deepseek.com`, made
+with your API key and only when the account service cannot answer. The browser receives aggregates
+only — token counts, costs, Session titles and folder paths — over the Harness's authenticated
+channel, and the API key never leaves the Host process.
 
 ## Limits
 

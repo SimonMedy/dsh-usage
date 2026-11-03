@@ -25,7 +25,6 @@ window.__ModuleLoader__.load({
       rangeTitle: 'Period',
       refresh: 'Refresh',
       language: 'Language',
-      langAuto: 'Follow app',
       cost: 'Estimated cost',
       costNote: 'Published DeepSeek prices, peak and off-peak',
       spendNote: 'Billed from balance:',
@@ -42,6 +41,12 @@ window.__ModuleLoader__.load({
       perDay: 'Cost per day',
       perModel: 'By model',
       recent: 'Recent Sessions',
+      colModel: 'Model',
+      colSession: 'Session',
+      colTokens: 'Tokens',
+      colPerRequest: 'Per request',
+      colTotal: 'Total',
+      colCost: 'Cost',
       noData: 'No model call recorded in this window yet.',
       loading: 'Loading usage…',
       failed: 'Could not read usage.',
@@ -70,7 +75,6 @@ window.__ModuleLoader__.load({
       rangeTitle: 'Période',
       refresh: 'Actualiser',
       language: 'Langue',
-      langAuto: "Langue de l'app",
       cost: 'Coût estimé',
       costNote: 'Prix publics DeepSeek, heures pleines et creuses',
       spendNote: 'Débité du solde :',
@@ -87,6 +91,12 @@ window.__ModuleLoader__.load({
       perDay: 'Coût par jour',
       perModel: 'Par modèle',
       recent: 'Sessions récentes',
+      colModel: 'Modèle',
+      colSession: 'Session',
+      colTokens: 'Tokens',
+      colPerRequest: 'Par requête',
+      colTotal: 'Total',
+      colCost: 'Coût',
       noData: 'Aucun appel au modèle enregistré dans cette fenêtre.',
       loading: 'Lecture de la consommation…',
       failed: 'Impossible de lire la consommation.',
@@ -115,7 +125,6 @@ window.__ModuleLoader__.load({
       rangeTitle: '时间范围',
       refresh: '刷新',
       language: '语言',
-      langAuto: '跟随应用',
       cost: '预估费用',
       costNote: 'DeepSeek 公开价格，含高峰与非高峰',
       spendNote: '余额已扣：',
@@ -132,6 +141,12 @@ window.__ModuleLoader__.load({
       perDay: '每日费用',
       perModel: '按模型',
       recent: '最近的会话',
+      colModel: '模型',
+      colSession: '会话',
+      colTokens: 'Tokens',
+      colPerRequest: '每次请求',
+      colTotal: '总计',
+      colCost: '费用',
       noData: '本窗口内还没有模型调用记录。',
       loading: '正在读取用量…',
       failed: '无法读取用量。',
@@ -147,24 +162,23 @@ window.__ModuleLoader__.load({
     const DICTS = { en, fr, zh }
     const LANG_KEY = 'dsh-usage.lang'
 
-    /** The stored plugin language: 'auto' follows the application locale. */
+    /** The stored plugin language; English until the user picks another one. */
     function readStoredLang() {
       try {
         const stored = localStorage.getItem(LANG_KEY)
         if (stored === 'en' || stored === 'fr' || stored === 'zh') return stored
       } catch {}
-      return 'auto'
+      return 'en'
     }
 
-    /** One language choice shared by the page, the sidebar label, and the turn chip. */
+    /** One language choice shared by the page, the sidebar label, and the cost chips. */
     const langStore = {
       value: readStoredLang(),
       listeners: new Set(),
       set(next) {
         this.value = next
         try {
-          if (next === 'auto') localStorage.removeItem(LANG_KEY)
-          else localStorage.setItem(LANG_KEY, next)
+          localStorage.setItem(LANG_KEY, next)
         } catch {}
         for (const listener of this.listeners) listener()
       },
@@ -183,17 +197,10 @@ window.__ModuleLoader__.load({
       return value
     }
 
-    /** Plugin choice first, then the application locale, then English. */
-    function translateWith(lang, fallback, key) {
-      if (lang !== 'auto') {
-        const dict = DICTS[lang] ?? en
-        return dict[key] ?? en[key] ?? key
-      }
-      if (typeof fallback === 'function') {
-        const value = fallback(key)
-        if (typeof value === 'string' && value.length > 0 && value !== key) return value
-      }
-      return en[key] ?? key
+    /** One dictionary lookup; English is the last resort for a missing key. */
+    function translate(lang, key) {
+      const dict = DICTS[lang] ?? en
+      return dict[key] ?? en[key] ?? key
     }
 
     /* --------------------------------------------------------------- ranges -- */
@@ -460,6 +467,7 @@ window.__ModuleLoader__.load({
 .ud_rows{display:flex;flex-direction:column}
 .ud_row{display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:10px;align-items:baseline;padding:8px 0;border-top:1px solid var(--dsw-alias-border-l1)}
 .ud_row:first-child{border-top:0}
+.ud_rowHead{padding:0 0 6px;border-top:0;color:var(--dsw-alias-label-secondary);font-size:10.5px;line-height:16px}
 .ud_rowName{font-size:12.5px;line-height:18px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .ud_rowMeta{font-size:11px;line-height:16px;color:var(--dsw-alias-label-secondary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .ud_rowValue{font-size:12.5px;font-variant-numeric:tabular-nums;white-space:nowrap}
@@ -541,10 +549,35 @@ window.__ModuleLoader__.load({
     }
 
     /**
-     * Per-Session turn costs, fetched once per Session and shared by every
-     * turn chip on screen.
+     * Per-Session costs, fetched once per Session and shared by every chip on
+     * screen. Concurrent mounts share one in-flight request instead of each
+     * opening their own.
      */
     const turnCache = new Map()
+    const turnInflight = new Map()
+
+    /** One request per Session, deduped across every mounted chip. */
+    function loadTurnCosts(id) {
+      const pending = turnInflight.get(id)
+      if (pending !== undefined) return pending
+      const request = fetch(apiUrl(`api/usage.session?sessionId=${encodeURIComponent(id)}`), {
+        headers: { accept: 'application/json' },
+        credentials: 'same-origin',
+      })
+        .then((response) => (response.ok ? response.json() : undefined))
+        .then((data) => {
+          if (data === undefined) return undefined
+          const next = { at: Date.now(), currency: data.currency, byTurn: data.byTurn ?? {}, byMessage: data.byMessage ?? {}, requests: data.requests, cost: data.cost }
+          turnCache.set(id, next)
+          return next
+        })
+        .catch(() => undefined)
+        .finally(() => {
+          turnInflight.delete(id)
+        })
+      turnInflight.set(id, request)
+      return request
+    }
 
     function useTurnCosts(sessionId, refreshMs = 0) {
       const [entry, setEntry] = useState(() => (sessionId ? turnCache.get(String(sessionId)) : undefined) ?? null)
@@ -563,18 +596,9 @@ window.__ModuleLoader__.load({
           return undefined
         }
         let cancelled = false
-        fetch(apiUrl(`api/usage.session?sessionId=${encodeURIComponent(id)}`), {
-          headers: { accept: 'application/json' },
-          credentials: 'same-origin',
+        loadTurnCosts(id).then((next) => {
+          if (!cancelled && next !== undefined) setEntry(next)
         })
-          .then((response) => (response.ok ? response.json() : undefined))
-          .then((data) => {
-            if (cancelled || data === undefined) return
-            const next = { at: Date.now(), currency: data.currency, byTurn: data.byTurn ?? {}, byMessage: data.byMessage ?? {}, requests: data.requests, cost: data.cost }
-            turnCache.set(id, next)
-            setEntry(next)
-          })
-          .catch(() => undefined)
         return () => {
           cancelled = true
         }
@@ -654,6 +678,13 @@ window.__ModuleLoader__.load({
       return h(
         'div',
         { className: 'ud_rows' },
+        h(
+          'div',
+          { className: 'ud_row ud_rowHead' },
+          h('div', {}, t('colModel')),
+          h('div', { className: 'ud_rowValue' }, t('colTokens')),
+          h('div', { className: 'ud_rowValue' }, t('colCost')),
+        ),
         models.map((model) =>
           h(
             'div',
@@ -676,6 +707,13 @@ window.__ModuleLoader__.load({
       return h(
         'div',
         { className: 'ud_rows' },
+        h(
+          'div',
+          { className: 'ud_row ud_rowHead' },
+          h('div', {}, t('colSession')),
+          h('div', { className: 'ud_rowValue' }, t('colPerRequest')),
+          h('div', { className: 'ud_rowValue' }, t('colTotal')),
+        ),
         sessions.map((session) =>
           h(
             'div',
@@ -870,10 +908,9 @@ window.__ModuleLoader__.load({
     }
 
     function UsagePage(props) {
-      const appTranslate = typeof props.t === 'function' ? props.t : undefined
       const lang = useLang()
-      const t = useCallback((key) => translateWith(lang, appTranslate, key), [lang, appTranslate])
-      const f = useMemo(() => formatters(lang === 'auto' ? undefined : lang), [lang])
+      const t = useCallback((key) => translate(lang, key), [lang])
+      const f = useMemo(() => formatters(lang), [lang])
       const [range, setRange] = useState(readStoredRange)
       const query = rangeQuery(range)
       const { status, data, error, refresh } = useSummary(query)
@@ -915,7 +952,6 @@ window.__ModuleLoader__.load({
             label: t('language'),
             value: lang,
             options: [
-              { value: 'auto', label: t('langAuto') },
               { value: 'en', label: 'English' },
               { value: 'fr', label: 'Français' },
               { value: 'zh', label: '中文' },
@@ -975,6 +1011,7 @@ window.__ModuleLoader__.load({
       }
 
       const originLabel = data.account !== null && data.account !== undefined && data.account.source === 'api-key' ? t('balanceNoteApiKey') : t('balanceNote')
+      const topUpUrl = data.account !== null && data.account !== undefined && typeof data.account.topUpUrl === 'string' && data.account.topUpUrl.startsWith('https://') ? data.account.topUpUrl : null
       const knownPreset = Object.hasOwn(RANGE_LABEL, data.range ?? range.preset) ? (data.range ?? range.preset) : range.preset
       const rangeLabel = knownPreset === 'custom' ? `${range.from} → ${range.to}` : t(RANGE_LABEL[knownPreset])
 
@@ -1010,11 +1047,11 @@ window.__ModuleLoader__.load({
               unit: balanceWallet.currency,
               note: null,
               children:
-                data.account.topUpUrl !== null
+                topUpUrl !== null
                   ? h(
                       'div',
                       { className: 'ud_note' },
-                      h('a', { href: data.account.topUpUrl, target: '_blank', rel: 'noreferrer' }, t('topUp')),
+                      h('a', { href: topUpUrl, target: '_blank', rel: 'noreferrer' }, t('topUp')),
                       ` · ${originLabel}`,
                     )
                   : h('div', { className: 'ud_note' }, originLabel),
@@ -1122,12 +1159,11 @@ window.__ModuleLoader__.load({
      * chips summarise, so only the price table makes it an estimate.
      */
     function SessionCostChip(props) {
-      const appTranslate = typeof props.t === 'function' ? props.t : undefined
       const lang = useLang()
-      const f = useMemo(() => formatters(lang === 'auto' ? undefined : lang), [lang])
+      const f = useMemo(() => formatters(lang), [lang])
       const usage = useTurnCosts(props.sessionId, 20000)
       if (usage === null || typeof usage.cost !== 'number' || usage.requests === 0) return null
-      const title = `${translateWith(lang, appTranslate, 'costChipTitle')} · ${f.plain(usage.requests)} req.`
+      const title = `${translate(lang, 'costChipTitle')} · ${f.plain(usage.requests)} req.`
       return h('span', { className: 'ud_footCost', title }, h(TagIcon, {}), h('span', {}, `≈ ${f.money(usage.cost, usage.currency)}`))
     }
 
@@ -1136,23 +1172,22 @@ window.__ModuleLoader__.load({
      * carries copy, feedback, and the shipped usage chip.
      */
     function MessageCostChip(props) {
-      const appTranslate = typeof props.t === 'function' ? props.t : undefined
       const lang = useLang()
-      const f = useMemo(() => formatters(lang === 'auto' ? undefined : lang), [lang])
-      const usage = useTurnCosts(props.sessionId, 20000)
+      const f = useMemo(() => formatters(lang), [lang])
+      // A finalized message never changes cost again: read it once, no timer.
+      const usage = useTurnCosts(props.sessionId, 0)
       if (usage === null || props.messageId === undefined || props.messageId === null) return null
       const entry = usage.byMessage[String(props.messageId)]
       if (entry === undefined) return null
-      const title = `${translateWith(lang, appTranslate, 'messageCost')} · ${f.plain(entry.totalTokens)} tokens`
+      const title = `${translate(lang, 'messageCost')} · ${f.plain(entry.totalTokens)} tokens`
       return h('span', { className: 'ud_actionChip', title }, h(TagIcon, { size: 12 }), h('span', {}, f.money(entry.cost, usage.currency)))
     }
 
     /** Sidebar-foot entry that opens the Usage page (wide row, rail icon). */
     function SidebarUsageAction(props) {
-      const appTranslate = typeof props.t === 'function' ? props.t : undefined
       const lang = useLang()
       const wide = props.wide !== false
-      const label = translateWith(lang, appTranslate, 'panelTitle')
+      const label = translate(lang, 'panelTitle')
       const open = typeof props.open === 'function' ? props.open : () => {}
       const usePanelInfo = typeof props.usePanelInfo === 'function' ? props.usePanelInfo : null
       const active = usePanelInfo === null ? false : usePanelInfo((info) => info.activePanelId === 'usage')
@@ -1178,12 +1213,6 @@ window.__ModuleLoader__.load({
       apply(ctx) {
         ensureStyles()
         ctx.effect(() => ctx.locale.register(NS, { en, fr, zh }))
-
-        let appTranslate = (key) => en[key] ?? key
-        try {
-          const bound = ctx.locale.bind(NS)
-          if (typeof bound === 'function') appTranslate = (key) => bound(key)
-        } catch {}
 
         ctx.effect(() => () => {
           const tag = document.querySelector(`style[data-plugin-css="${tagId}"]`)
@@ -1211,7 +1240,7 @@ window.__ModuleLoader__.load({
               id: 'usage-footer',
               order: 5,
               locale: NS,
-              label: () => translateWith(langStore.value, appTranslate, 'panelTitle'),
+              label: () => translate(langStore.value, 'panelTitle'),
               inject: () => ({ open: () => ctx.layout.selectPanel('usage') }),
             },
             SidebarUsageAction,
