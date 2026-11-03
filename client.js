@@ -467,7 +467,7 @@ window.__ModuleLoader__.load({
 .ud_legendLabel{color:var(--dsw-alias-label-primary)}
 .ud_legendShare{font-variant-numeric:tabular-nums}
 .ud_chartWrap{position:relative}
-.ud_tip{position:absolute;z-index:5;transform:translate(-50%,calc(-100% - 10px));pointer-events:none;min-width:196px;max-width:280px;padding:10px 12px;border-radius:var(--dsw-radius-md);background:var(--dsw-specific-menu);backdrop-filter:var(--dsw-menu-backdrop-filter);--dsw-elevation-stroke-color:var(--dsw-alias-border-l1);box-shadow:var(--dsw-elevation-prominent);color:var(--dsw-alias-label-secondary);font-size:12px;line-height:18px}
+.ud_tip{position:absolute;z-index:5;transform:translate(-50%,calc(-100% - 10px));transition:left .12s ease,top .12s ease;pointer-events:none;min-width:196px;max-width:280px;padding:10px 12px;border-radius:var(--dsw-radius-md);background:var(--dsw-specific-menu);backdrop-filter:var(--dsw-menu-backdrop-filter);--dsw-elevation-stroke-color:var(--dsw-alias-border-l1);box-shadow:var(--dsw-elevation-prominent);color:var(--dsw-alias-label-secondary);font-size:12px;line-height:18px}
 .ud_tipHead{display:flex;justify-content:space-between;gap:16px;margin-bottom:6px;color:var(--dsw-alias-label-primary);font-weight:500;font-variant-numeric:tabular-nums}
 .ud_tipRow{display:grid;grid-template-columns:8px minmax(0,1fr) auto;align-items:center;gap:8px;padding:1px 0}
 .ud_tipRow b{color:var(--dsw-alias-label-secondary);font-weight:400;text-align:right;font-variant-numeric:tabular-nums}
@@ -829,20 +829,6 @@ window.__ModuleLoader__.load({
             )
           })
         }
-        // One invisible hit area per column, empty days included, so the guide
-        // line and the card also answer on days with no spend.
-        elements.push(
-          h('rect', {
-            key: `hit-${day.date}`,
-            x: padLeft + step * index,
-            y: padTop,
-            width: step,
-            height: innerHeight,
-            fill: 'transparent',
-            onMouseEnter: () => setHover(index),
-            onMouseLeave: () => setHover(null),
-          }),
-        )
       })
 
       const labelStep = Math.max(1, Math.ceil(counts.length / 7))
@@ -861,9 +847,21 @@ window.__ModuleLoader__.load({
       const guideX = hoveredIndex === null ? 0 : padLeft + step * hoveredIndex + step / 2
       const guideTop = padTop + innerHeight - Math.min(1, hoveredCost / scale) * innerHeight
 
+      // One listener for the whole plot instead of a hit area per column: the
+      // card survives small pointer moves, and sliding across days only swaps
+      // the data, never the node, so nothing flickers or reloads.
+      const onMove = (event) => {
+        const rect = event.currentTarget.getBoundingClientRect()
+        if (rect.width <= 0 || counts.length === 0) return
+        const x = ((event.clientX - rect.left) / rect.width) * width
+        const index = Math.floor((x - padLeft) / step)
+        const next = index >= 0 && index < counts.length ? index : null
+        if (next !== hover) setHover(next)
+      }
+
       return h(
         'div',
-        { className: 'ud_chartWrap' },
+        { className: 'ud_chartWrap', onMouseMove: onMove, onMouseLeave: () => setHover(null) },
         h('svg', { className: 'ud_chart', viewBox: `0 0 ${width} ${height}`, role: 'img', 'aria-label': t('perDay') }, [
           h('defs', { key: 'defs' }, defs),
           ...elements,
