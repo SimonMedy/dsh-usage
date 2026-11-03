@@ -284,6 +284,7 @@ function foldSession(header, events, config) {
   const totals = emptyBucket()
   const byModel = new Map()
   const byDay = new Map()
+  const byDayModels = new Map()
   const byTurn = new Map()
   const byMessage = {}
   const costByKind = { input: 0, cacheRead: 0, cacheWrite: 0, output: 0 }
@@ -350,6 +351,12 @@ function foldSession(header, events, config) {
     addInto(dayBucket, tokens, cost)
     byDay.set(key, dayBucket)
 
+    // Cost per model per day: the stacked chart needs the split where it is
+    // exact, rather than attributing a Session's model share afterwards.
+    const dayModels = byDayModels.get(key) ?? {}
+    dayModels[model] = (dayModels[model] ?? 0) + cost
+    byDayModels.set(key, dayModels)
+
     const turn = Number(event.data.turn)
     if (Number.isSafeInteger(turn) && turn >= 0) {
       const turnBucket = byTurn.get(turn) ?? {
@@ -391,6 +398,7 @@ function foldSession(header, events, config) {
     lastTime,
     byModel: [...byModel.values()],
     byDay: Object.fromEntries(byDay),
+    byDayModels: Object.fromEntries(byDayModels),
     byTurn: Object.fromEntries(byTurn),
     byMessage,
     costByKind,
@@ -573,7 +581,7 @@ export function apply(ctx, config = {}) {
     const cursor = new Date(window.start)
     cursor.setHours(0, 0, 0, 0)
     while (cursor.getTime() <= window.end && days.length < MAX_WINDOW_DAYS) {
-      const bucket = { date: dayKey(cursor.getTime()), ...emptyBucket() }
+      const bucket = { date: dayKey(cursor.getTime()), ...emptyBucket(), models: {} }
       days.push(bucket)
       index.set(bucket.date, bucket)
       cursor.setDate(cursor.getDate() + 1)
@@ -592,6 +600,12 @@ export function apply(ctx, config = {}) {
         target.cacheWriteTokens += bucket.cacheWriteTokens
         target.outputTokens += bucket.outputTokens
         target.cost += bucket.cost
+        const dayModels = session.byDayModels === undefined ? undefined : session.byDayModels[key]
+        if (dayModels !== undefined) {
+          for (const [model, modelCost] of Object.entries(dayModels)) {
+            target.models[model] = (target.models[model] ?? 0) + modelCost
+          }
+        }
       }
       let requests = 0
       let totalTokens = 0
@@ -649,7 +663,18 @@ export function apply(ctx, config = {}) {
         totalTokens: bucketTotal(totals),
         cost: totals.cost,
       },
-      byDay: days.map((day) => ({ date: day.date, requests: day.requests, totalTokens: bucketTotal(day), cost: day.cost, inputTokens: day.inputTokens, cacheReadTokens: day.cacheReadTokens, outputTokens: day.outputTokens })),
+      byDay: days.map((day) => ({
+        date: day.date,
+        requests: day.requests,
+        totalTokens: bucketTotal(day),
+        cost: day.cost,
+        inputTokens: day.inputTokens,
+        cacheReadTokens: day.cacheReadTokens,
+        outputTokens: day.outputTokens,
+        models: Object.entries(day.models)
+          .map(([model, cost]) => ({ model, cost }))
+          .sort((a, b) => b.cost - a.cost),
+      })),
       byModel: [...byModel.values()].sort((a, b) => b.cost - a.cost),
       sessions: rows,
       since,

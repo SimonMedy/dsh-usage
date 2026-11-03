@@ -47,6 +47,7 @@ window.__ModuleLoader__.load({
       colPerRequest: 'Per request',
       colTotal: 'Total',
       colCost: 'Cost',
+      others: 'Others',
       noData: 'No model call recorded in this window yet.',
       loading: 'Loading usage…',
       failed: 'Could not read usage.',
@@ -103,6 +104,7 @@ window.__ModuleLoader__.load({
       colPerRequest: 'Par requête',
       colTotal: 'Total',
       colCost: 'Coût',
+      others: 'Autres',
       noData: 'Aucun appel au modèle enregistré dans cette fenêtre.',
       loading: 'Lecture de la consommation…',
       failed: 'Impossible de lire la consommation.',
@@ -159,6 +161,7 @@ window.__ModuleLoader__.load({
       colPerRequest: '每次请求',
       colTotal: '总计',
       colCost: '费用',
+      others: '其他',
       noData: '本窗口内还没有模型调用记录。',
       loading: '正在读取用量…',
       failed: '无法读取用量。',
@@ -179,6 +182,9 @@ window.__ModuleLoader__.load({
 
     const DICTS = { en, fr, zh }
     const LANG_KEY = 'dsh-usage.lang'
+
+    /** Categorical palette for the stacked cost chart, stable per model rank. */
+    const PALETTE = ['#7c5cff', '#f5a623', '#3ddc84', '#4aa8ff', '#ff6b9d', '#9aa4b2']
 
     /** The stored plugin language; English until the user picks another one. */
     function readStoredLang() {
@@ -431,6 +437,14 @@ window.__ModuleLoader__.load({
 .ud_btn{appearance:none;border:1px solid var(--dsw-alias-border-l1);background:var(--dsw-alias-bg-layer-1);color:var(--dsw-alias-label-primary);font:inherit;font-size:12px;line-height:18px;padding:6px 12px;border-radius:9px;cursor:pointer}
 .ud_btn:hover{border-color:var(--dsw-alias-border-l2)}
 .ud_btn:disabled{opacity:.55;cursor:default}
+.ud_btnTiny{font-size:11px;line-height:16px;padding:3px 9px;border-radius:7px;text-decoration:none;display:inline-flex;align-items:center;gap:5px}
+.ud_balFoot{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:2px}
+.ud_balSource{font-size:11px;line-height:16px;color:var(--dsw-alias-label-secondary)}
+.ud_legend{display:flex;flex-wrap:wrap;gap:8px 18px;margin-top:12px}
+.ud_legendItem{display:inline-flex;align-items:center;gap:7px;font-size:11.5px;line-height:17px;color:var(--dsw-alias-label-secondary)}
+.ud_swatch{width:8px;height:8px;border-radius:2px;flex:none}
+.ud_legendLabel{color:var(--dsw-alias-label-primary)}
+.ud_legendShare{font-variant-numeric:tabular-nums}
 .ud_select{appearance:none;border:1px solid var(--dsw-alias-border-l1);background:var(--dsw-alias-bg-layer-1);color:var(--dsw-alias-label-primary);font:inherit;font-size:12px;line-height:18px;padding:6px 10px;border-radius:9px;cursor:pointer}
 .ud_picker{position:relative;flex:none}
 .ud_field{display:inline-flex;align-items:center;gap:7px;max-width:230px;height:32px;box-sizing:border-box;appearance:none;border:1px solid var(--dsw-alias-border-l1);background:var(--dsw-alias-bg-layer-1);color:var(--dsw-alias-label-primary);font:inherit;font-size:12px;line-height:18px;padding:0 10px;border-radius:10px;cursor:pointer}
@@ -703,7 +717,13 @@ window.__ModuleLoader__.load({
       )
     }
 
-    function DayChart({ days, currency, f, t }) {
+    /**
+     * Stacked cost bars: one segment per model, largest at the bottom, with a
+     * legend carrying each model's share of the window. A model list shorter
+     * than the day's split means an older Host, so the bar falls back to one
+     * brand-coloured segment.
+     */
+    function DayChart({ days, models, currency, f, t }) {
       const width = 760
       const height = 190
       const padTop = 10
@@ -721,25 +741,46 @@ window.__ModuleLoader__.load({
         elements.push(h('line', { key: `grid-${line}`, className: 'ud_grid', x1: 0, x2: width, y1: y, y2: y }))
       }
 
+      /** The cost one day attributes to one legend entry. */
+      const segmentCost = (day, entry) => {
+        const parts = day.models
+        if (!Array.isArray(parts) || parts.length === 0) return entry.index === 0 && entry.color === null ? day.cost : 0
+        if (entry.others === true) {
+          const known = new Set(models.filter((model) => model.others !== true).map((model) => model.key))
+          return parts.reduce((sum, part) => (known.has(part.model) ? sum : sum + part.cost), 0)
+        }
+        const found = parts.find((part) => part.model === entry.key)
+        return found === undefined ? 0 : found.cost
+      }
+
       counts.forEach((day, index) => {
         if (day.cost <= 0) return
-        const barHeight = Math.max(2, (day.cost / scale) * innerHeight)
         const x = step * index + (step - barWidth) / 2
-        elements.push(
-          h(
-            'rect',
-            {
-              key: day.date,
-              className: 'ud_bar',
-              x,
-              y: padTop + innerHeight - barHeight,
-              width: barWidth,
-              height: barHeight,
-              rx: Math.min(3, barWidth / 2),
-            },
-            h('title', {}, `${shortDate(day.date, f.locale)} · ${f.money(day.cost, currency)} · ${f.plain(day.totalTokens)} tokens · ${day.requests} req.`),
-          ),
-        )
+        let bottom = padTop + innerHeight
+        const stacked = models.length > 0 && Array.isArray(day.models) && day.models.length > 0 ? models : [{ key: '__all', label: '', color: null, index: 0 }]
+        stacked.forEach((entry, entryIndex) => {
+          const value = segmentCost(day, { ...entry, index: entryIndex })
+          if (value <= 0) return
+          const segmentHeight = Math.max(1, (value / scale) * innerHeight)
+          bottom -= segmentHeight
+          const isTop = entryIndex === stacked.length - 1
+          elements.push(
+            h(
+              'rect',
+              {
+                key: `${day.date}-${entry.key}`,
+                x,
+                y: bottom,
+                width: barWidth,
+                height: segmentHeight,
+                rx: isTop ? Math.min(3, barWidth / 2) : 0,
+                fill: entry.color === null ? undefined : entry.color,
+                className: entry.color === null ? 'ud_bar' : undefined,
+              },
+              h('title', {}, `${shortDate(day.date, f.locale)} · ${entry.label === '' ? '' : `${entry.label} · `}${f.money(value, currency)}`),
+            ),
+          )
+        })
       })
 
       const labelStep = Math.max(1, Math.ceil(counts.length / 6))
@@ -755,6 +796,25 @@ window.__ModuleLoader__.load({
         'svg',
         { className: 'ud_chart', viewBox: `0 0 ${width} ${height}`, role: 'img', 'aria-label': t('perDay') },
         elements,
+      )
+    }
+
+    /** Colour key and share, mirroring the platform's stacked charts. */
+    function ChartLegend({ models, total, f, t }) {
+      if (models.length === 0) return null
+      const base = total > 0 ? total : 1
+      return h(
+        'div',
+        { className: 'ud_legend' },
+        models.map((model) =>
+          h(
+            'div',
+            { className: 'ud_legendItem', key: model.key },
+            h('span', { className: 'ud_swatch', style: { background: model.color } }),
+            h('span', { className: 'ud_legendLabel' }, model.label),
+            h('span', { className: 'ud_legendShare' }, `${((model.cost / base) * 100).toFixed(1)} %`),
+          ),
+        ),
       )
     }
 
@@ -1100,6 +1160,18 @@ window.__ModuleLoader__.load({
       const knownPreset = Object.hasOwn(RANGE_LABEL, data.range ?? range.preset) ? (data.range ?? range.preset) : range.preset
       const rangeLabel = knownPreset === 'custom' ? `${range.from} → ${range.to}` : t(RANGE_LABEL[knownPreset])
 
+      // Chart entries: models by descending cost, the tail folded into one
+      // "others" slice so the palette never runs out of colours.
+      const chartModels = useMemo(() => {
+        const ranked = (data.byModel ?? []).filter((entry) => entry.cost > 0)
+        const head = ranked.slice(0, PALETTE.length - 1).map((entry, index) => ({ key: entry.model, label: entry.model, cost: entry.cost, color: PALETTE[index], others: false }))
+        const rest = ranked.slice(PALETTE.length - 1)
+        if (rest.length > 0) {
+          head.push({ key: '__others', label: t('others'), cost: rest.reduce((sum, entry) => sum + entry.cost, 0), color: PALETTE[PALETTE.length - 1], others: true })
+        }
+        return head
+      }, [data, t])
+
       const cards = h(
         'div',
         { className: 'ud_cards' },
@@ -1131,15 +1203,14 @@ window.__ModuleLoader__.load({
               value: String(balanceWallet.balance),
               unit: balanceWallet.currency,
               note: null,
-              children:
+              children: h(
+                'div',
+                { className: 'ud_balFoot' },
                 topUpUrl !== null
-                  ? h(
-                      'div',
-                      { className: 'ud_note' },
-                      h('a', { href: topUpUrl, target: '_blank', rel: 'noreferrer' }, t('topUp')),
-                      ` · ${originLabel}`,
-                    )
-                  : h('div', { className: 'ud_note' }, originLabel),
+                  ? h('a', { className: 'ud_btn ud_btnTiny', href: topUpUrl, target: '_blank', rel: 'noreferrer' }, t('topUp'))
+                  : null,
+                h('span', { className: 'ud_balSource' }, originLabel),
+              ),
             })
           : h(StatCard, {
               label: t('sessions'),
@@ -1158,7 +1229,12 @@ window.__ModuleLoader__.load({
           h('div', { className: 'ud_panelTitle' }, t('perDay')),
           h('div', { className: 'ud_panelMeta' }, `${f.money(totals.cost, currency)} · ${rangeLabel}`),
         ),
-        totals.requests === 0 ? h('div', { className: 'ud_empty' }, t('noData')) : h(DayChart, { days: data.byDay, currency, f, t }),
+        totals.requests === 0
+          ? h('div', { className: 'ud_empty' }, t('noData'))
+          : [
+              h(DayChart, { key: 'chart', days: data.byDay, models: chartModels, currency, f, t }),
+              h(ChartLegend, { key: 'legend', models: chartModels, total: totals.cost, f, t }),
+            ],
       )
 
       const split = h(
