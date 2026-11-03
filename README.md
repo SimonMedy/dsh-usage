@@ -13,6 +13,9 @@ No build step, no runtime dependency, no network access except the optional bala
 - **Usage page**, opened from the sidebar foot row (just above the account launcher): total cost,
   tokens, API requests, cache-hit rate, account balance, a per-day cost chart, a per-model table,
   and the recent Sessions.
+- **Stacked daily chart**: one segment per model, a value axis, and a legend that doubles as
+  filters — click a model to take it out of the chart. Hovering a column opens a card with that
+  day's split, or `$0.00` on a quiet day.
 - **Turn cost** in the row that already carries copy, feedback and the shipped usage chip:
   `🗄 Usage 7.7M tok  [gauge] $0,0271 USD  21:17`. It prices the whole Turn — every request it
   made, tool rounds included — so it matches the token counter beside it. Click it for the
