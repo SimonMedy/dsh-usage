@@ -325,6 +325,21 @@ window.__ModuleLoader__.load({
           }
           return `${symbol}${number} ${code}`
         },
+        /** Axis ticks: the amount alone, no currency code, so labels stay short. */
+        axis: (value, currency) => {
+          const code = currency ?? 'USD'
+          try {
+            return new Intl.NumberFormat(locale, {
+              style: 'currency',
+              currency: code,
+              currencyDisplay: 'narrowSymbol',
+              minimumFractionDigits: 2,
+              maximumFractionDigits: 2,
+            }).format(value)
+          } catch {
+            return `$${Number(value).toFixed(2)}`
+          }
+        },
       }
       formatterCache.set(cacheKey, built)
       return built
@@ -504,7 +519,9 @@ window.__ModuleLoader__.load({
 .ud_chart{display:block;width:100%;height:auto}
 .ud_bar{fill:var(--dsw-alias-brand-primary)}
 .ud_grid{stroke:var(--dsw-alias-border-l1);stroke-width:1}
+.ud_guide{stroke:var(--dsw-alias-border-l2);stroke-width:1;stroke-dasharray:3 3}
 .ud_axis{fill:var(--dsw-alias-label-secondary);font-size:10px;font-family:inherit}
+.ud_axisY{fill:var(--dsw-alias-label-secondary);font-size:10px;font-family:inherit;font-variant-numeric:tabular-nums}
 .ud_split{display:grid;grid-template-columns:1fr 1fr;gap:12px}
 @media (max-width:980px){.ud_split{grid-template-columns:1fr}}
 .ud_rows{display:flex;flex-direction:column}
@@ -740,17 +757,23 @@ window.__ModuleLoader__.load({
       const height = 190
       const padTop = 10
       const padBottom = 20
+      // Room for the value axis, like the platform's chart.
+      const padLeft = 46
       const innerHeight = height - padTop - padBottom
       const counts = days.length > 0 ? days : []
       const max = counts.reduce((peak, day) => Math.max(peak, day.cost), 0)
       const scale = max > 0 ? max : 1
-      const step = width / Math.max(counts.length, 1)
+      const plotWidth = width - padLeft - 2
+      const step = plotWidth / Math.max(counts.length, 1)
       const barWidth = Math.max(3, Math.min(step * 0.55, step > 120 ? 72 : 22))
       const elements = []
 
       for (let line = 0; line <= 2; line += 1) {
         const y = padTop + (innerHeight / 2) * line
-        elements.push(h('line', { key: `grid-${line}`, className: 'ud_grid', x1: 0, x2: width, y1: y, y2: y }))
+        elements.push(h('line', { key: `grid-${line}`, className: 'ud_grid', x1: padLeft, x2: width, y1: y, y2: y }))
+        elements.push(
+          h('text', { key: `tick-${line}`, className: 'ud_axisY', x: padLeft - 8, y: y + 3.5, textAnchor: 'end' }, f.axis((max / 2) * (2 - line), currency)),
+        )
       }
 
       /** The cost one day attributes to one legend entry. */
@@ -779,65 +802,64 @@ window.__ModuleLoader__.load({
       counts.forEach((day, index) => {
         const segments = daySegments(day)
         const total = segments.reduce((sum, segment) => sum + segment.value, 0)
-        if (total <= 0) return
-        const x = step * index + (step - barWidth) / 2
-        const barHeight = (total / scale) * innerHeight
-        const barTop = padTop + innerHeight - barHeight
-        // One rounded outline for the whole stack, so a 2px top segment is
-        // clipped by the bar's shape instead of becoming a floating pill.
-        const clipId = `udclip-${index}`
-        const radius = Math.min(3, barWidth / 2)
-        defs.push(h('clipPath', { key: clipId, id: clipId }, h('rect', { x, y: barTop, width: barWidth, height: barHeight, rx: radius })))
-        let bottom = padTop + innerHeight
-        segments.forEach((segment) => {
-          const segmentHeight = (segment.value / scale) * innerHeight
-          bottom -= segmentHeight
-          elements.push(
-            h('rect', {
-              key: `${day.date}-${segment.entry.key}`,
-              x,
-              y: bottom,
-              width: barWidth,
-              height: Math.max(0.5, segmentHeight),
-              fill: segment.entry.color === null ? undefined : segment.entry.color,
-              className: segment.entry.color === null ? 'ud_bar' : undefined,
-              clipPath: `url(#${clipId})`,
-            }),
-          )
-        })
-        // One invisible hit area per column: hovering anywhere in it opens the
-        // breakdown, which is how the platform's chart behaves.
+        const x = padLeft + step * index + (step - barWidth) / 2
+        if (total > 0) {
+          const barHeight = (total / scale) * innerHeight
+          const barTop = padTop + innerHeight - barHeight
+          // One rounded outline for the whole stack, so a 2px top segment is
+          // clipped by the bar's shape instead of becoming a floating pill.
+          const clipId = `udclip-${index}`
+          const radius = Math.min(3, barWidth / 2)
+          defs.push(h('clipPath', { key: clipId, id: clipId }, h('rect', { x, y: barTop, width: barWidth, height: barHeight, rx: radius })))
+          let bottom = padTop + innerHeight
+          segments.forEach((segment) => {
+            const segmentHeight = (segment.value / scale) * innerHeight
+            bottom -= segmentHeight
+            elements.push(
+              h('rect', {
+                key: `${day.date}-${segment.entry.key}`,
+                x,
+                y: bottom,
+                width: barWidth,
+                height: Math.max(0.5, segmentHeight),
+                fill: segment.entry.color === null ? undefined : segment.entry.color,
+                className: segment.entry.color === null ? 'ud_bar' : undefined,
+                clipPath: `url(#${clipId})`,
+              }),
+            )
+          })
+        }
+        // One invisible hit area per column, empty days included, so the guide
+        // line and the card also answer on days with no spend.
         elements.push(
           h('rect', {
             key: `hit-${day.date}`,
-            x: step * index,
+            x: padLeft + step * index,
             y: padTop,
             width: step,
             height: innerHeight,
             fill: 'transparent',
-            onMouseEnter: () =>
-              setHover({
-                index,
-                left: ((step * index + step / 2) / width) * 100,
-                top: ((barTop + 2) / height) * 100,
-              }),
+            onMouseEnter: () => setHover(index),
             onMouseLeave: () => setHover(null),
           }),
         )
       })
 
-      const labelStep = Math.max(1, Math.ceil(counts.length / 6))
+      const labelStep = Math.max(1, Math.ceil(counts.length / 7))
       counts.forEach((day, index) => {
         if (index % labelStep !== 0 && index !== counts.length - 1) return
-        const x = step * index + step / 2
+        const x = padLeft + step * index + step / 2
         elements.push(
           h('text', { key: `label-${day.date}`, className: 'ud_axis', x, y: height - 4, textAnchor: 'middle' }, shortDate(day.date, f.locale)),
         )
       })
 
-      const hoveredDay = hover === null ? null : counts[hover.index]
+      const hoveredIndex = hover === null ? null : hover
+      const hoveredDay = hoveredIndex === null ? null : counts[hoveredIndex]
       const hoveredSegments = hoveredDay === undefined || hoveredDay === null ? [] : daySegments(hoveredDay)
       const hoveredCost = hoveredSegments.reduce((sum, segment) => sum + segment.value, 0)
+      const guideX = hoveredIndex === null ? 0 : padLeft + step * hoveredIndex + step / 2
+      const guideTop = padTop + innerHeight - Math.min(1, hoveredCost / scale) * innerHeight
 
       return h(
         'div',
@@ -845,17 +867,27 @@ window.__ModuleLoader__.load({
         h('svg', { className: 'ud_chart', viewBox: `0 0 ${width} ${height}`, role: 'img', 'aria-label': t('perDay') }, [
           h('defs', { key: 'defs' }, defs),
           ...elements,
+          hoveredDay === undefined || hoveredDay === null
+            ? null
+            : h('line', { key: 'guide', className: 'ud_guide', x1: guideX, x2: guideX, y1: padTop, y2: padTop + innerHeight }),
         ]),
-        hoveredDay === null || hoveredDay === undefined || hoveredCost <= 0
+        hoveredDay === null || hoveredDay === undefined
           ? null
           : h(
               'div',
-              { className: 'ud_tip', style: { left: `clamp(112px, ${hover.left}%, calc(100% - 112px))`, top: `max(96px, ${hover.top}%)` }, role: 'status' },
+              {
+                className: 'ud_tip',
+                style: {
+                  left: `clamp(112px, ${((guideX / width) * 100).toFixed(2)}%, calc(100% - 112px))`,
+                  top: `max(96px, ${(((guideTop + 2) / height) * 100).toFixed(2)}%)`,
+                },
+                role: 'status',
+              },
               h(
                 'div',
                 { className: 'ud_tipHead' },
                 h('span', {}, shortDate(hoveredDay.date, f.locale)),
-                h('span', {}, f.money(hoveredCost, currency)),
+                h('span', {}, hoveredCost === 0 ? f.axis(0, currency) : f.money(hoveredCost, currency)),
               ),
               hoveredSegments.map((segment) =>
                 h(
