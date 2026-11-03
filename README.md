@@ -13,9 +13,12 @@ No build step, no runtime dependency, no network access except the optional bala
 - **Usage page**, opened from the sidebar foot row (just above the account launcher): total cost,
   tokens, API requests, cache-hit rate, account balance, a per-day cost chart, a per-model table,
   and the recent Sessions.
-- **Per-message cost** in the row that already carries copy, feedback and the shipped usage chip:
-  `🗄 Usage 5M tok  [gauge] $0,001784 USD  21:17`.
-- **Session cost** in the composer footer, beside the turn/step and token counters.
+- **Turn cost** in the row that already carries copy, feedback and the shipped usage chip:
+  `🗄 Usage 7.7M tok  [gauge] $0,0271 USD  21:17`. It prices the whole Turn — every request it
+  made, tool rounds included — so it matches the token counter beside it. Click it for the
+  breakdown: cost per token kind and the provider/model.
+- **Session cost** in the composer footer, beside the turn/step and token counters, with the same
+  breakdown on click (per token kind and per model).
 - **Time ranges**: today, yesterday, last 7 days, last 30 days, this month, last month, custom
   (with a calendar picker).
 - **Language**: English, French or Chinese for the whole plugin UI — persisted, English by default.
