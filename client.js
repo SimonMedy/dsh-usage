@@ -1080,6 +1080,18 @@ window.__ModuleLoader__.load({
       }, [data])
 
       const cacheRate = totals && totals.totalTokens > 0 ? (totals.cacheReadTokens / (totals.cacheReadTokens + totals.inputTokens)) * 100 : 0
+      // Chart entries: models by descending cost, the tail folded into one
+      // "others" slice so the palette never runs out of colours. Computed
+      // before the early returns, because a hook may not follow them.
+      const chartModels = useMemo(() => {
+        const ranked = data === null ? [] : (data.byModel ?? []).filter((entry) => entry.cost > 0)
+        const head = ranked.slice(0, PALETTE.length - 1).map((entry, index) => ({ key: entry.model, label: entry.model, cost: entry.cost, color: PALETTE[index], others: false }))
+        const rest = ranked.slice(PALETTE.length - 1)
+        if (rest.length > 0) {
+          head.push({ key: '__others', label: translate(lang, 'others'), cost: rest.reduce((sum, entry) => sum + entry.cost, 0), color: PALETTE[PALETTE.length - 1], others: true })
+        }
+        return head
+      }, [data, lang])
 
       const head = h(
         'div',
@@ -1159,18 +1171,6 @@ window.__ModuleLoader__.load({
       const topUpUrl = data.account !== null && data.account !== undefined && typeof data.account.topUpUrl === 'string' && data.account.topUpUrl.startsWith('https://') ? data.account.topUpUrl : null
       const knownPreset = Object.hasOwn(RANGE_LABEL, data.range ?? range.preset) ? (data.range ?? range.preset) : range.preset
       const rangeLabel = knownPreset === 'custom' ? `${range.from} → ${range.to}` : t(RANGE_LABEL[knownPreset])
-
-      // Chart entries: models by descending cost, the tail folded into one
-      // "others" slice so the palette never runs out of colours.
-      const chartModels = useMemo(() => {
-        const ranked = (data.byModel ?? []).filter((entry) => entry.cost > 0)
-        const head = ranked.slice(0, PALETTE.length - 1).map((entry, index) => ({ key: entry.model, label: entry.model, cost: entry.cost, color: PALETTE[index], others: false }))
-        const rest = ranked.slice(PALETTE.length - 1)
-        if (rest.length > 0) {
-          head.push({ key: '__others', label: t('others'), cost: rest.reduce((sum, entry) => sum + entry.cost, 0), color: PALETTE[PALETTE.length - 1], others: true })
-        }
-        return head
-      }, [data, t])
 
       const cards = h(
         'div',
