@@ -66,6 +66,11 @@ window.__ModuleLoader__.load({
       defaultPrice: 'default price',
       estimatedShort: 'est.',
       estimatedPrice: 'Priced from the model family: no published row for this model yet, so the figure is an estimate.',
+      tagLocal: 'local',
+      localPrice: 'Runs on this machine: these tokens cost nothing beyond your own hardware.',
+      tagUnpriced: 'not priced',
+      unpricedPrice: 'This provider has no price row yet. Add one in the prices configuration to bill its models.',
+      unpricedNote: 'requests from a provider with no price row (not in the cost):',
     }
 
     const fr = {
@@ -125,6 +130,11 @@ window.__ModuleLoader__.load({
       defaultPrice: 'prix par défaut',
       estimatedShort: 'est.',
       estimatedPrice: 'Prix déduit de la famille du modèle : aucune grille publiée pour ce modèle, le chiffre est une estimation.',
+      tagLocal: 'local',
+      localPrice: 'Tourne sur cette machine : ces tokens ne coûtent rien hors ton propre matériel.',
+      tagUnpriced: 'non tarifé',
+      unpricedPrice: "Ce fournisseur n'a pas de grille de prix. Ajoute-la dans la configuration prices pour facturer ses modèles.",
+      unpricedNote: "requêtes d'un fournisseur sans grille de prix (hors du coût) :",
     }
 
     const zh = {
@@ -184,6 +194,11 @@ window.__ModuleLoader__.load({
       defaultPrice: '默认价格',
       estimatedShort: '估',
       estimatedPrice: '按模型系列推算的价格：该模型尚无公开价目表，金额为估算值。',
+      tagLocal: '本地',
+      localPrice: '在本机运行：这些 token 除硬件外没有费用。',
+      tagUnpriced: '未计价',
+      unpricedPrice: '该提供商尚无价目表。在 prices 配置中补充后即可计费。',
+      unpricedNote: '条请求来自未配置价目表的提供商（未计入费用）：',
     }
 
     const DICTS = { en, fr, zh }
@@ -560,6 +575,8 @@ window.__ModuleLoader__.load({
 .ud_rowName{font-size:12.5px;line-height:18px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .ud_rowMeta{font-size:11px;line-height:16px;color:var(--dsw-alias-label-secondary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .ud_rowValue{font-size:12.5px;font-variant-numeric:tabular-nums;white-space:nowrap}
+.ud_rowTagWarn{color:var(--dsw-alias-state-warning-primary);border-color:var(--dsw-alias-state-warning-primary)}
+.ud_noteWarn{color:var(--dsw-alias-state-warning-primary)}
 .ud_rowTag{display:inline-block;font-size:10px;line-height:14px;padding:0 5px;border-radius:5px;border:1px solid var(--dsw-alias-border-l1);color:var(--dsw-alias-label-secondary);margin-left:6px;vertical-align:1px}
 .ud_empty{padding:26px 0;text-align:center;color:var(--dsw-alias-label-secondary);font-size:13px}
 .ud_banner{font-size:12px;line-height:18px;color:var(--dsw-alias-label-secondary);background:var(--dsw-alias-bg-layer-2);border:1px solid var(--dsw-alias-border-l1);border-radius:10px;padding:8px 12px}
@@ -992,8 +1009,16 @@ window.__ModuleLoader__.load({
                 'div',
                 { className: 'ud_rowName' },
                 model.model,
-                model.priced === false ? h('span', { className: 'ud_rowTag', title: t('defaultPrice') }, t('defaultPrice')) : null,
-                model.estimated === true && model.priced !== false ? h('span', { className: 'ud_rowTag', title: t('estimatedPrice') }, t('estimatedShort')) : null,
+                // The badge says where the figure comes from: a local model has
+                // no provider bill, an unconfigured one has no known grid, and a
+                // derived row is a family guess.
+                model.priceSource === 'local'
+                  ? h('span', { className: 'ud_rowTag', title: t('localPrice') }, t('tagLocal'))
+                  : model.priceSource === 'unpriced'
+                    ? h('span', { className: 'ud_rowTag ud_rowTagWarn', title: t('unpricedPrice') }, t('tagUnpriced'))
+                    : model.estimated === true
+                      ? h('span', { className: 'ud_rowTag', title: t('estimatedPrice') }, t('estimatedShort'))
+                      : null,
               ),
               h('div', { className: 'ud_rowMeta' }, `${f.plain(model.requests)} req. · ${f.compact(model.inputTokens + model.cacheReadTokens)} in · ${f.compact(model.outputTokens)} out`),
             ),
@@ -1346,6 +1371,10 @@ window.__ModuleLoader__.load({
           children: [
             data.spend !== null && data.spend !== undefined
               ? h('div', { className: 'ud_note' }, `${t('spendNote')} ${f.money(data.spend.amount, currency)}`)
+              : null,
+            // A total that ignores an unpriceable provider must say so.
+            data.unpriced !== undefined && data.unpriced !== null && data.unpriced.requests > 0
+              ? h('div', { className: 'ud_note ud_noteWarn' }, `${f.plain(data.unpriced.requests)} ${t('unpricedNote')}`)
               : null,
             h('div', { className: 'ud_note' }, t('costNote')),
           ],

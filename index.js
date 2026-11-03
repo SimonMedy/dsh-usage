@@ -112,6 +112,11 @@ function resolveConfig(config, learned = {}) {
     prices,
     /** Models with a row this build ships or the user wrote: everything else is an estimate. */
     explicit,
+    /**
+     * Extra provider ids that mean "local", on top of the built-in patterns.
+     * A local model is billed nothing whatever its name looks like.
+     */
+    localProviders: Array.isArray(raw.localProviders) ? raw.localProviders.filter((entry) => typeof entry === 'string' && entry.length > 0) : [],
     fallbackModel: typeof raw.fallbackModel === 'string' ? raw.fallbackModel : FALLBACK_MODEL,
   }
 }
@@ -152,15 +157,6 @@ function liveEvents(session) {
   return undefined
 }
 
-/** Whether a model has its own price row rather than the fallback grid. */
-function priceKnown(prices, model) {
-  if (Object.hasOwn(prices, model)) return true
-  const lower = model.toLowerCase()
-  if (lower.includes('pro') || lower.includes('reasoner')) return prices['deepseek-v4-pro'] !== undefined
-  if (lower.includes('flash') || lower.includes('chat') || lower.includes('lite')) return prices['deepseek-flash'] !== undefined
-  return false
-}
-
 /**
  * Give a never-seen model a price row derived from its family name, so a model
  * released after this build still gets a plausible cost instead of silently
@@ -176,6 +172,31 @@ function learnModel(config, model) {
   const derived = { cacheHit: [...row.cacheHit], cacheMiss: [...row.cacheMiss], output: [...row.output], cacheWrite: [...row.cacheWrite] }
   config.prices[model] = derived
   return derived
+}
+
+/**
+ * Provider ids that mean "running on this machine": a local model costs nothing
+ * per token, so pricing it with a cloud grid would invent a bill.
+ */
+const LOCAL_PROVIDER_PATTERNS = ['ollama', 'lmstudio', 'lm-studio', 'llama', 'llamacpp', 'llama.cpp', 'vllm', 'jan', 'kobold', 'gpt4all', 'local']
+
+/** The row that bills nothing: local inference, and models nobody can price. */
+const FREE_ROW = { cacheHit: [0, 0], cacheMiss: [0, 0], output: [0, 0], cacheWrite: [0, 0] }
+
+/**
+ * Classify the provider behind one usage record.
+ * @param provider - `message.source.provider` as recorded.
+ * @param extra - additional local provider patterns from the configuration.
+ * @returns `deepseek` (we know the grid), `local` (free), or `other` (unknown).
+ */
+function providerKind(provider, extra = []) {
+  const id = typeof provider === 'string' ? provider.toLowerCase() : ''
+  if (id.length === 0) return 'other'
+  if (id.includes('deepseek')) return 'deepseek'
+  for (const pattern of [...LOCAL_PROVIDER_PATTERNS, ...extra]) {
+    if (typeof pattern === 'string' && pattern.length > 0 && id.includes(pattern.toLowerCase())) return 'local'
+  }
+  return 'other'
 }
 
 /**
@@ -338,6 +359,8 @@ function foldSession(header, events, config) {
   const byDayModels = new Map()
   const byTurn = new Map()
   const byMessage = {}
+  /** Usage from providers whose price we do not know, kept out of the totals. */
+  const unpriced = { requests: 0, inputTokens: 0, cacheReadTokens: 0, outputTokens: 0 }
   const costByKind = { input: 0, cacheRead: 0, cacheWrite: 0, output: 0 }
   let lastTime = header.createdAt ?? 0
   let turns = 0
@@ -366,10 +389,23 @@ function foldSession(header, events, config) {
       cacheWriteTokens: num(usage.cacheWriteTokens),
       outputTokens: num(usage.outputTokens),
     }
-    // A model nobody configured still gets a plausible row, derived once from
-    // its family name and remembered, so a new release needs no profile edit.
-    if (!Object.hasOwn(config.prices, model) && typeof config.learn === 'function') config.learn(model)
-    const parts = costParts(config.prices, config.fallbackModel, { ...tokens, model }, event.time)
+    // Pricing depends on who answers: a DeepSeek model can be priced from the
+    // published grid, a model running on this machine costs nothing, and any
+    // other provider is unknown until its owner writes a row for it.
+    const kind = providerKind(provider, config.localProviders)
+    const configured = config.explicit !== undefined && config.explicit.has(model)
+    let parts
+    let priceSource
+    if (kind === 'deepseek' || configured) {
+      // A model nobody configured still gets a plausible row, derived once from
+      // its family name and remembered, so a new release needs no profile edit.
+      if (!Object.hasOwn(config.prices, model) && typeof config.learn === 'function') config.learn(model)
+      parts = costParts(config.prices, config.fallbackModel, { ...tokens, model }, event.time)
+      priceSource = configured ? 'configured' : 'estimated'
+    } else {
+      parts = costParts({ [model]: FREE_ROW }, model, { ...tokens, model }, event.time)
+      priceSource = kind === 'local' ? 'local' : 'unpriced'
+    }
     const cost = parts.total
     costByKind.input += parts.input
     costByKind.cacheRead += parts.cacheRead
@@ -404,14 +440,24 @@ function foldSession(header, events, config) {
       cost: 0,
       model,
       provider,
-      priced: priceKnown(config.prices, model),
+      priceSource,
+      priced: priceSource !== 'unpriced',
       // No row of its own: the figure comes from a family match or a learned
       // row, and the page says so rather than passing it off as published.
-      estimated: config.explicit === undefined || !config.explicit.has(model),
+      estimated: priceSource === 'estimated',
+      free: priceSource === 'local',
     }
-    if (!priceKnown(config.prices, model)) modelBucket.priced = false
     addInto(modelBucket, tokens, cost)
     byModel.set(model, modelBucket)
+
+    // Usage we deliberately did not price: the page reports it so a total that
+    // ignores an unconfigured provider is never mistaken for the real bill.
+    if (priceSource === 'unpriced') {
+      unpriced.requests += 1
+      unpriced.inputTokens += tokens.inputTokens
+      unpriced.cacheReadTokens += tokens.cacheReadTokens
+      unpriced.outputTokens += tokens.outputTokens
+    }
 
     const key = dayKey(event.time)
     const dayBucket = byDay.get(key) ?? emptyBucket()
@@ -469,6 +515,7 @@ function foldSession(header, events, config) {
     byTurn: Object.fromEntries(byTurn),
     byMessage,
     costByKind,
+    unpriced,
   }
 }
 
@@ -715,10 +762,17 @@ export function apply(ctx, config = {}) {
     }
     const totals = emptyBucket()
     const byModel = new Map()
+    const unpriced = { requests: 0, inputTokens: 0, cacheReadTokens: 0, outputTokens: 0 }
     const rows = []
     for (const session of sessions) {
       const inWindow = Object.entries(session.byDay).filter(([key]) => index.has(key))
       if (inWindow.length === 0 && session.lastTime < since) continue
+      if (session.unpriced !== undefined) {
+        unpriced.requests += session.unpriced.requests
+        unpriced.inputTokens += session.unpriced.inputTokens
+        unpriced.cacheReadTokens += session.unpriced.cacheReadTokens
+        unpriced.outputTokens += session.unpriced.outputTokens
+      }
       for (const [key, bucket] of inWindow) {
         const target = index.get(key)
         target.requests += bucket.requests
@@ -766,11 +820,18 @@ export function apply(ctx, config = {}) {
           cacheWriteTokens: 0,
           outputTokens: 0,
           cost: 0,
+          priceSource: model.priceSource,
           priced: model.priced !== false,
           estimated: model.estimated === true,
+          free: model.free === true,
         }
+        // A model can appear through several Sessions: keep the least confident
+        // source, so the page never claims more certainty than a Session has.
+        const rank = { configured: 0, estimated: 1, local: 2, unpriced: 3 }
+        if ((rank[model.priceSource] ?? 0) > (rank[target.priceSource] ?? 0)) target.priceSource = model.priceSource
         if (model.priced === false) target.priced = false
         if (model.estimated === true) target.estimated = true
+        if (model.free === true) target.free = true
         target.requests += model.requests * share
         target.inputTokens += model.inputTokens * share
         target.cacheReadTokens += model.cacheReadTokens * share
@@ -802,6 +863,7 @@ export function apply(ctx, config = {}) {
         totalTokens: bucketTotal(totals),
         cost: totals.cost,
       },
+      unpriced,
       byDay: days.map((day) => ({
         date: day.date,
         requests: day.requests,
@@ -936,6 +998,7 @@ export function apply(ctx, config = {}) {
       partial: result.partial,
       currency: resolved.currency,
       totals: aggregateResult.totals,
+      unpriced: aggregateResult.unpriced,
       byDay: aggregateResult.byDay,
       byModel: aggregateResult.byModel,
       sessions,

@@ -103,6 +103,44 @@ test('an estimated price is flagged in the model table', () => {
   assert.ok(text.includes('est.'), 'the est. tag is rendered for the derived row')
 })
 
+test('a local model and an unpriced provider get their own badges', () => {
+  const data = summary()
+  data.byModel.push({
+    model: 'unsloth/Qwen3.8-27B-GGUF',
+    provider: 'llama',
+    requests: 40,
+    inputTokens: 100,
+    cacheReadTokens: 50_000,
+    cacheWriteTokens: 0,
+    outputTokens: 900,
+    cost: 0,
+    priceSource: 'local',
+    priced: true,
+    estimated: false,
+    free: true,
+  })
+  data.byModel.push({
+    model: 'qwen/qwen3-max',
+    provider: 'openrouter',
+    requests: 3,
+    inputTokens: 100,
+    cacheReadTokens: 0,
+    cacheWriteTokens: 0,
+    outputTokens: 100,
+    cost: 0,
+    priceSource: 'unpriced',
+    priced: false,
+    estimated: false,
+  })
+  data.unpriced = { requests: 3, inputTokens: 100, cacheReadTokens: 0, outputTokens: 100 }
+
+  const { text, nodes } = mountClient({ data }).render('main')
+  const tags = nodes.filter((node) => String(node.props.className ?? '').startsWith('ud_rowTag')).map((node) => node.children.join(''))
+  assert.ok(tags.includes('local'), 'the local badge is rendered')
+  assert.ok(tags.includes('not priced'), 'the unpriced badge is rendered')
+  assert.ok(text.includes('3 requests from a provider with no price row'), 'the cost card says what it left out')
+})
+
 test('the Session chip renders and opens its breakdown', () => {
   const usage = {
     at: Date.now(),

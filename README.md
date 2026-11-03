@@ -109,16 +109,44 @@ Override any of it in `prices`: an explicit row always wins and drops the tag. T
 lists model names (`/models`) but publishes no prices programmatically, so no key can fetch the grid;
 what is automatic is the *name*, and the closest published tier by family.
 
+### Other providers, and models running on your own machine
+
+A Harness profile can route a Session to any provider: DeepSeek, another cloud, or a local server
+(Ollama, llama.cpp, LM Studio…) serving a GGUF model. The plugin reads the provider recorded in each
+request and prices accordingly:
+
+| Provider | Cost | Badge in the model table |
+|---|---|---|
+| `deepseek…` | the published grid (or a derived row) | `est.` when derived |
+| Local (`llama`, `ollama`, `lmstudio`, `vllm`, `jan`, `kobold`, `gpt4all`, `local`…) | **zero** — you pay for hardware, not tokens | `local` |
+| Anything else | **zero, and reported** — no grid is invented | `not priced` |
+
+An unpriceable provider never receives fabricated dollars: its requests are left out of the cost and
+counted under the cost card ("N requests from a provider with no price row"), so a total that ignores
+them can never pass for the real bill. To bill one, add a row keyed by its model id:
+
+```yaml
+prices:
+  "qwen/qwen3-max":
+    cacheMiss: [1.2, 2.4]
+    cacheHit: [0.12, 0.24]
+    output: [3, 6]
+```
+
+The badge then disappears — the figure is exact. Local provider ids that the built-in patterns miss
+can be added with `localProviders: [my-inference-box]`.
+
 ## Tests
 
 ```bash
 node --test
 ```
 
-Coverage: cost maths (tariffs, cache rates, derived rows, persistence), aggregation (day buckets,
-per-day model split, window filtering, live logs), the Host contract (exports, `engines.dsh`, module
-id) and the browser half (render in both states, chart geometry, legend, breakdown panel). No
-dependencies beyond Node itself.
+Coverage: cost maths (tariffs, cache rates, derived rows, persistence), provider routing (DeepSeek,
+local, unknown cloud, configured rows), aggregation (day buckets, per-day model split, window
+filtering, live logs), the Host contract (exports, `engines.dsh`, module id) and the browser half
+(render in both states, chart geometry, legend, badges, breakdown panel). No dependencies beyond
+Node itself.
 
 ## How the cost is computed
 

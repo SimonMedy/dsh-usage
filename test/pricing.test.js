@@ -1,6 +1,6 @@
 // Cost maths: published rows, peak/off-peak, and models nobody configured.
 import assert from 'node:assert/strict'
-import { readFileSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { test } from 'node:test'
 import { boot, message, session } from './helpers.mjs'
@@ -9,6 +9,9 @@ import { boot, message, session } from './helpers.mjs'
 const OFF_PEAK = Date.UTC(2026, 10, 3, 12, 0, 0)
 /** 2026-11-03 02:00 UTC, a Tuesday: inside the first peak window. */
 const PEAK = Date.UTC(2026, 10, 3, 2, 0, 0)
+
+/** A model running on this machine: GGUF name, custom provider id. */
+const LOCAL_MODEL = 'unsloth/Qwen3.8-27B-GGUF:UD-Q3_K_XL'
 
 const summaryOf = async (events, config) => {
   const { call } = await boot({ sessions: [session('s1', events)], config })
@@ -94,4 +97,54 @@ test('the turn and session totals agree with the sum of their parts', async () =
     const kindSum = kinds.input + kinds.cacheRead + kinds.cacheWrite + kinds.output
     assert.ok(Math.abs(kindSum - entry.cost) < 1e-12, 'token kinds add up to the message')
   }
+})
+
+test('a local model bills nothing and is not an estimate', async () => {
+  const events = [message('m1', 0, [500, 200_000, 0, 800], { time: OFF_PEAK, provider: 'llama', model: LOCAL_MODEL })]
+  const { call, home } = await boot({ sessions: [session('s1', events)] })
+  const { body } = await call('/api/usage.summary', { preset: 'last30' })
+
+  assert.equal(body.totals.cost, 0, 'local inference costs nothing per token')
+  assert.equal(body.totals.requests, 1, 'the request is still counted')
+  assert.equal(body.byModel[0].priceSource, 'local')
+  assert.equal(body.byModel[0].estimated, false)
+  assert.equal(body.byModel[0].free, true)
+  assert.equal(body.unpriced.requests, 0, 'free is not the same as unknown')
+
+  // Nothing is learnt for a local model: it must not pollute the price table.
+  await new Promise((resolve) => setTimeout(resolve, 600))
+  const file = join(home, 'storages', 'usage-dashboard', 'models.json')
+  assert.ok(!existsSync(file), 'no derived row is written for a local model')
+})
+
+test('an unknown cloud provider stays unpriced and is reported', async () => {
+  const events = [message('m1', 0, [1_000, 0, 0, 1_000], { time: OFF_PEAK, provider: 'openrouter', model: 'qwen/qwen3-max' })]
+  const { call } = await boot({ sessions: [session('s1', events)] })
+  const { body } = await call('/api/usage.summary', { preset: 'last30' })
+
+  assert.equal(body.totals.cost, 0, 'no invented dollars for a provider we cannot price')
+  assert.equal(body.byModel[0].priceSource, 'unpriced')
+  assert.equal(body.byModel[0].priced, false)
+  assert.equal(body.unpriced.requests, 1)
+  assert.equal(body.unpriced.inputTokens, 1_000)
+})
+
+test('configuring a row for another provider bills it exactly', async () => {
+  const events = [message('m1', 0, [1_000_000, 0, 0, 0], { time: OFF_PEAK, provider: 'openrouter', model: 'qwen/qwen3-max' })]
+  const { call } = await boot({
+    sessions: [session('s1', events)],
+    config: { prices: { 'qwen/qwen3-max': { cacheMiss: [2, 4], cacheHit: [0, 0], output: [0, 0] } } },
+  })
+  const { body } = await call('/api/usage.summary', { preset: 'last30' })
+
+  assert.equal(body.totals.cost, 2)
+  assert.equal(body.byModel[0].priceSource, 'configured')
+  assert.equal(body.unpriced.requests, 0)
+})
+
+test('a custom local provider id can be declared in the configuration', async () => {
+  const events = [message('m1', 0, [10, 0, 0, 10], { time: OFF_PEAK, provider: 'my-box', model: 'some-gguf' })]
+  const { call } = await boot({ sessions: [session('s1', events)], config: { localProviders: ['my-box'] } })
+  const { body } = await call('/api/usage.summary', { preset: 'last30' })
+  assert.equal(body.byModel[0].priceSource, 'local')
 })
