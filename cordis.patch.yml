@@ -2,4 +2,4 @@
 # client half draws the sidebar page, the message chip and the footer chip.
 - insert:
     - id: usage-dashboard
-      name: 'dsh-usage-dashboard'
+      name: 'dsh-usage'

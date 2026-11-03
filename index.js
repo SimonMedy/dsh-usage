@@ -12,7 +12,7 @@
  * tokens as `[off-peak, peak]`; peak hours are 01:00–04:00 and 06:00–10:00 UTC
  * on weekdays. A deployment overrides them through the row's `config`.
  *
- * @module @local/dsh-usage-dashboard
+ * @module dsh-usage
  */
 
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'

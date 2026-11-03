@@ -1,5 +1,5 @@
 window.__ModuleLoader__.load({
-  id: '@local/dsh-usage-dashboard',
+  id: 'dsh-usage',
   factory(require) {
     const React = require('react')
     const h = React.createElement
@@ -487,7 +487,7 @@ window.__ModuleLoader__.load({
 .ud_sideIcon:hover{background:var(--dsw-alias-interactive-bg-hover)}
 `
 
-    const tagId = '@local/dsh-usage-dashboard/page.css'
+    const tagId = 'dsh-usage/page.css'
 
     function ensureStyles() {
       if (typeof document === 'undefined') return
@@ -499,7 +499,7 @@ window.__ModuleLoader__.load({
         return
       }
       const tag = document.createElement('style')
-      tag.dataset.plugin = '@local/dsh-usage-dashboard'
+      tag.dataset.plugin = 'dsh-usage'
       tag.dataset.pluginCss = tagId
       tag.textContent = CSS
       document.head.appendChild(tag)

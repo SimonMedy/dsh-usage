@@ -1,4 +1,4 @@
-# dsh-usage-dashboard
+# dsh-usage
 
 Usage and cost dashboard for the [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness).
 
@@ -32,7 +32,7 @@ No build step, no runtime dependency, no network access except the optional bala
 ### From a clone (works today, no registry needed)
 
 ```bash
-git clone https://github.com/<you>/dsh-usage-dashboard.git
+git clone https://github.com/<you>/dsh-usage.git
 ```
 
 Then install that directory as a bundle in your profile. From a Harness session, ask the agent to
@@ -48,7 +48,7 @@ breaks the plugin at the next start.
 npm publish
 ```
 
-then install the package spec `dsh-usage-dashboard@1.0.0` the same way. An npm install copies the
+then install the package spec `dsh-usage@1.0.0` the same way. An npm install copies the
 files into the profile instead of linking, so it survives moving the source directory.
 
 ## Configure prices
@@ -60,7 +60,7 @@ per 1M tokens, written as `[off-peak, peak]`. Override them in the profile patch
 
 ```yaml
 - id: usage-dashboard
-  name: "dsh-usage-dashboard"
+  name: "dsh-usage"
   config:
     currency: USD
     prices:
