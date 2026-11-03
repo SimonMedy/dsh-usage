@@ -835,11 +835,22 @@ window.__ModuleLoader__.load({
         if (total > 0) {
           const barHeight = (total / scale) * innerHeight
           const barTop = padTop + innerHeight - barHeight
-          // One rounded outline for the whole stack, so a 2px top segment is
-          // clipped by the bar's shape instead of becoming a floating pill.
+          // One outline for the whole stack, so a 2px top segment is clipped by
+          // the bar's shape instead of becoming a floating pill. Only the top
+          // corners are rounded: a bar sitting on the axis keeps a square foot.
           const clipId = `udclip-${index}`
-          const radius = Math.min(3, barWidth / 2)
-          defs.push(h('clipPath', { key: clipId, id: clipId }, h('rect', { x, y: barTop, width: barWidth, height: barHeight, rx: radius })))
+          const radius = Math.min(3, barWidth / 2, barHeight / 2)
+          const foot = barTop + barHeight
+          const outline = [
+            `M${x} ${foot}`,
+            `V${barTop + radius}`,
+            `Q${x} ${barTop} ${x + radius} ${barTop}`,
+            `H${x + barWidth - radius}`,
+            `Q${x + barWidth} ${barTop} ${x + barWidth} ${barTop + radius}`,
+            `V${foot}`,
+            'Z',
+          ].join(' ')
+          defs.push(h('clipPath', { key: clipId, id: clipId }, h('path', { d: outline })))
           let bottom = padTop + innerHeight
           segments.forEach((segment) => {
             const segmentHeight = (segment.value / scale) * innerHeight

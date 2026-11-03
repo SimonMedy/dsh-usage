@@ -1,6 +1,6 @@
 {
   "name": "dsh-usage",
-  "version": "1.5.3",
+  "version": "1.5.4",
   "type": "module",
   "description": "Token usage, request counts and estimated cost for every DeepSeek Harness Session, with a sidebar page, a per-message cost chip and the account balance.",
   "license": "MIT",

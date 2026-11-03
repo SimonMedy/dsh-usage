@@ -75,11 +75,20 @@ test('the chart stacks one segment per model, clipped to the bar outline', () =>
   assert.equal(clipped.length, 2, 'two visible models, two segments')
 
   const clips = nodes.filter((node) => node.type === 'clipPath')
-  assert.equal(clips.length, 1, 'one rounded outline per bar')
+  assert.equal(clips.length, 1, 'one outline per bar')
 
+  // The outline is a path, not a rect: only the top corners may be rounded.
   const outline = clips[0].children[0]
-  const total = clipped.reduce((sum, node) => sum + node.props.height, 0)
-  assert.ok(Math.abs(total - outline.props.height) < 0.001, 'segments fill the outline exactly')
+  assert.equal(outline.type, 'path')
+  assert.equal((outline.props.d.match(/Q/g) ?? []).length, 2, 'two rounded top corners')
+  assert.ok(!outline.props.d.includes('rx'), 'no rectangle radius to square off the foot')
+
+  // Segments still fill the drawn bar, and it stands on the baseline.
+  const top = Math.min(...clipped.map((node) => node.props.y))
+  const covered = clipped.reduce((sum, node) => sum + node.props.height, 0)
+  const baseline = Math.max(...clipped.map((node) => node.props.y + node.props.height))
+  assert.ok(Math.abs(covered - (baseline - top)) < 0.001, 'segments tile the bar without gaps')
+  assert.equal(baseline, 170, 'the bar sits on the axis (padTop 10 + plot 160)')
 })
 
 test('the legend filters: every entry is a pressed button', () => {
