@@ -555,6 +555,14 @@ window.__ModuleLoader__.load({
      */
     const turnCache = new Map()
     const turnInflight = new Map()
+    const turnListeners = new Map()
+
+    /** Tell every mounted chip of one Session that a fresher fold arrived. */
+    function publishTurnCosts(id, value) {
+      const listeners = turnListeners.get(id)
+      if (listeners === undefined) return
+      for (const listener of listeners) listener(value)
+    }
 
     /** One request per Session, deduped across every mounted chip. */
     function loadTurnCosts(id) {
@@ -569,6 +577,7 @@ window.__ModuleLoader__.load({
           if (data === undefined) return undefined
           const next = { at: Date.now(), currency: data.currency, byTurn: data.byTurn ?? {}, byMessage: data.byMessage ?? {}, requests: data.requests, cost: data.cost }
           turnCache.set(id, next)
+          publishTurnCosts(id, next)
           return next
         })
         .catch(() => undefined)
@@ -579,7 +588,14 @@ window.__ModuleLoader__.load({
       return request
     }
 
-    function useTurnCosts(sessionId, refreshMs = 0) {
+    /**
+     * Subscribe one chip to a Session's costs.
+     * @param sessionId - the Session to read.
+     * @param refreshMs - polling interval, or 0 for a one-shot read.
+     * @param needsId - a message id this chip must find; a fold published before
+     *   that message landed does not contain it, so the read is retried briefly.
+     */
+    function useTurnCosts(sessionId, refreshMs = 0, needsId = null) {
       const [entry, setEntry] = useState(() => (sessionId ? turnCache.get(String(sessionId)) : undefined) ?? null)
       const [nonce, setNonce] = useState(0)
       useEffect(() => {
@@ -590,19 +606,39 @@ window.__ModuleLoader__.load({
       useEffect(() => {
         const id = sessionId ? String(sessionId) : null
         if (id === null) return undefined
-        const cached = turnCache.get(id)
-        if (cached !== undefined && Date.now() - cached.at < (refreshMs > 0 ? 12000 : 30000)) {
-          setEntry(cached)
-          return undefined
-        }
+        const listeners = turnListeners.get(id) ?? new Set()
+        const listener = (value) => setEntry(value)
+        listeners.add(listener)
+        turnListeners.set(id, listeners)
+
         let cancelled = false
-        loadTurnCosts(id).then((next) => {
-          if (!cancelled && next !== undefined) setEntry(next)
-        })
+        let timer = null
+        let attempts = 0
+        const complete = (value) => needsId === null || value.byMessage[String(needsId)] !== undefined
+        const attempt = () => {
+          loadTurnCosts(id).then((value) => {
+            if (cancelled || value === undefined) return
+            setEntry(value)
+            if (!complete(value) && attempts < 5) {
+              attempts += 1
+              timer = setTimeout(attempt, 1500)
+            }
+          })
+        }
+        const cached = turnCache.get(id)
+        if (cached !== undefined && complete(cached) && Date.now() - cached.at < (refreshMs > 0 ? 12000 : 30000)) {
+          setEntry(cached)
+        } else {
+          attempt()
+        }
+
         return () => {
           cancelled = true
+          if (timer !== null) clearTimeout(timer)
+          listeners.delete(listener)
+          if (listeners.size === 0) turnListeners.delete(id)
         }
-      }, [sessionId, nonce, refreshMs])
+      }, [sessionId, nonce, refreshMs, needsId])
       return entry
     }
 
@@ -1174,8 +1210,8 @@ window.__ModuleLoader__.load({
     function MessageCostChip(props) {
       const lang = useLang()
       const f = useMemo(() => formatters(lang), [lang])
-      // A finalized message never changes cost again: read it once, no timer.
-      const usage = useTurnCosts(props.sessionId, 0)
+      // One read per message, retried until its own usage record lands.
+      const usage = useTurnCosts(props.sessionId, 0, props.messageId ?? null)
       if (usage === null || props.messageId === undefined || props.messageId === null) return null
       const entry = usage.byMessage[String(props.messageId)]
       if (entry === undefined) return null

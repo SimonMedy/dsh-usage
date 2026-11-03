@@ -461,11 +461,32 @@ export function apply(ctx, config = {}) {
     if (persistence === undefined || persistence === null) return { sessions: [], partial: false, available: false }
     const snapshots = await persistence.list()
     snapshots.sort((a, b) => (b.header.createdAt ?? 0) - (a.header.createdAt ?? 0))
+    // Live Sessions carry events the persisted log has not flushed yet; folding
+    // them from memory keeps the newest message and its cost on screen at once.
+    const liveSessions = new Map()
+    const store = ctx.get('sessions')
+    if (store !== undefined && store !== null && typeof store.list === 'function') {
+      for (const session of store.list()) liveSessions.set(String(session.id), session)
+    }
     const deadline = Date.now() + budgetMs
     const sessions = []
     let partial = false
     for (const snapshot of snapshots) {
       const id = String(snapshot.header.id)
+      const live = liveSessions.get(id)
+      if (live !== undefined && Array.isArray(live.events)) {
+        const events = live.events
+        const signature = `live:${events.length}:${events.length > 0 ? events[events.length - 1].time : 0}`
+        const cachedLive = folds.get(id)
+        if (cachedLive !== undefined && cachedLive.revision === signature) {
+          sessions.push(cachedLive.value)
+          continue
+        }
+        const value = foldSession(live.header ?? snapshot.header, events, resolved)
+        folds.set(id, { revision: signature, value })
+        sessions.push(value)
+        continue
+      }
       const cached = folds.get(id)
       if (cached !== undefined && cached.revision === String(snapshot.revision)) {
         sessions.push(cached.value)
@@ -728,23 +749,35 @@ export function apply(ctx, config = {}) {
     const url = new URL(request.url)
     const id = url.searchParams.get('sessionId')
     if (id === null || id.length === 0) return json({ error: 'missing sessionId' }, 400)
-    const persistence = ctx.get('sessionPersistence')
-    if (persistence === undefined || persistence === null) return json({ error: 'session persistence is unavailable' }, 501)
-    const snapshot = await persistence.stat(id).catch(() => undefined)
-    if (snapshot === undefined) return json({ error: 'session not found' }, 404)
-    const revision = String(snapshot.revision)
-    const cached = folds.get(id)
+    // A live Session answers from memory: the persisted log lags behind the
+    // message that just settled, which is exactly the one the chip asks about.
+    const store = ctx.get('sessions')
+    const live = store !== undefined && store !== null && typeof store.get === 'function' ? store.get(id) : undefined
     let value
-    if (cached !== undefined && cached.revision === revision) value = cached.value
-    else {
-      let handle
-      try {
-        handle = await persistence.open(id, 'read')
-        const { events } = await handle.read(0, undefined, {})
-        value = foldSession(handle.header ?? snapshot.header, events, resolved)
-        folds.set(id, { revision, value })
-      } finally {
-        if (handle !== undefined) await handle.close().catch(() => undefined)
+    if (live !== undefined && Array.isArray(live.events)) {
+      const events = live.events
+      const signature = `live:${events.length}:${events.length > 0 ? events[events.length - 1].time : 0}`
+      const cachedLive = folds.get(id)
+      value = cachedLive !== undefined && cachedLive.revision === signature ? cachedLive.value : foldSession(live.header ?? { id, createdAt: 0 }, events, resolved)
+      if (cachedLive === undefined || cachedLive.revision !== signature) folds.set(id, { revision: signature, value })
+    } else {
+      const persistence = ctx.get('sessionPersistence')
+      if (persistence === undefined || persistence === null) return json({ error: 'session persistence is unavailable' }, 501)
+      const snapshot = await persistence.stat(id).catch(() => undefined)
+      if (snapshot === undefined) return json({ error: 'session not found' }, 404)
+      const revision = String(snapshot.revision)
+      const cached = folds.get(id)
+      if (cached !== undefined && cached.revision === revision) value = cached.value
+      else {
+        let handle
+        try {
+          handle = await persistence.open(id, 'read')
+          const { events } = await handle.read(0, undefined, {})
+          value = foldSession(handle.header ?? snapshot.header, events, resolved)
+          folds.set(id, { revision, value })
+        } finally {
+          if (handle !== undefined) await handle.close().catch(() => undefined)
+        }
       }
     }
     return json({
