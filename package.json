@@ -13,6 +13,14 @@
     "tokens",
     "dashboard"
   ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/SimonMedy/dsh-usage.git"
+  },
+  "homepage": "https://github.com/SimonMedy/dsh-usage#readme",
+  "bugs": {
+    "url": "https://github.com/SimonMedy/dsh-usage/issues"
+  },
   "exports": {
     ".": "./index.js",
     "./client": "./client.js",
